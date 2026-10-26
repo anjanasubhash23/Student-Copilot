@@ -11,14 +11,14 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
     llm_model: str = "claude-sonnet-5-5"
+    llm_concurrency: int = 4
 
-    database_url: str = "postgresql+psycopg://copilot:copilot@localhost:5432/copilot"
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "copilot-password"
 
-    data_dir: Path = ROOT / "data"
     prompts_dir: Path = ROOT / "prompts"
+    cache_dir: Path = ROOT / "data" / "cache"
 
 
 @lru_cache

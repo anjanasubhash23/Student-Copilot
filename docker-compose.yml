@@ -1,45 +1,13 @@
 services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: copilot
-      POSTGRES_PASSWORD: copilot
-      POSTGRES_DB: copilot
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U copilot"]
-      interval: 5s
-      retries: 10
-
   neo4j:
     image: neo4j:5.20
     environment:
       NEO4J_AUTH: neo4j/copilot-password
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "7474:7474"   # browser UI
+      - "7687:7687"   # bolt
     volumes:
       - neo4jdata:/data
 
-  api:
-    build: .
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://copilot:copilot@postgres:5432/copilot
-      NEO4J_URI: bolt://neo4j:7687
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./data:/srv/data
-    depends_on:
-      postgres:
-        condition: service_healthy
-      neo4j:
-        condition: service_started
-
 volumes:
-  pgdata:
   neo4jdata:
