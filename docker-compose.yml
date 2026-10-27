@@ -1,13 +1,22 @@
+# Local development services. Values like ${NEO4J_PASSWORD} are read from .env.
 services:
   neo4j:
-    image: neo4j:5.20
+    image: neo4j:5.26-community  # 5.26 is the Neo4j 5 LTS line
     environment:
-      NEO4J_AUTH: neo4j/copilot-password
+      # Only applied the first time the data volume is created.
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}
     ports:
-      - "7474:7474"   # browser UI
-      - "7687:7687"   # bolt
+      - "127.0.0.1:7474:7474"  # browser UI
+      - "127.0.0.1:7687:7687"  # bolt
     volumes:
       - neo4jdata:/data
+    healthcheck:
+      # Checks bolt and auth, not just that the port is open.
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD}", "RETURN 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
 volumes:
   neo4jdata:

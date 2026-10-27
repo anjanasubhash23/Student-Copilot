@@ -1,11 +1,21 @@
 __pycache__/
 *.pyc
 .venv/
-.env
 *.egg-info/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
 data/cache/*
 !data/cache/.gitkeep
 data/courses/*/*.pdf
 eval/data/*
 !eval/data/.gitkeep
+project.md

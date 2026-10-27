@@ -7,19 +7,17 @@ responses are keyed by (model, prompt, output schema) under data/cache/llm/.
 import hashlib
 import json
 from functools import lru_cache
-from typing import TypeVar
 
 import anthropic
 from pydantic import BaseModel
 
 from app.settings import get_settings
 
-T = TypeVar("T", bound=BaseModel)
-
 
 @lru_cache
 def _client() -> anthropic.Anthropic:
-    return anthropic.Anthropic(api_key=get_settings().anthropic_api_key or None)
+    key = get_settings().anthropic_api_key
+    return anthropic.Anthropic(api_key=key.get_secret_value() if key else None)
 
 
 def load_prompt(name: str, **values: str) -> str:
@@ -29,7 +27,7 @@ def load_prompt(name: str, **values: str) -> str:
     return text
 
 
-def structured(prompt: str, output: type[T], *, max_tokens: int = 8192) -> T:
+def structured[T: BaseModel](prompt: str, output: type[T], *, max_tokens: int = 8192) -> T:
     """Force a single tool call whose input schema is `output`, and parse it."""
     settings = get_settings()
     schema = output.model_json_schema()
