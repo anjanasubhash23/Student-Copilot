@@ -57,9 +57,7 @@ def _write(tx: ManagedTransaction, g: CourseGraph) -> None:
         """,
         course=course,
         members=[
-            {"unit": u.name, "topic": name, "position": i}
-            for u in g.units
-            for i, name in enumerate(u.topics, start=1)
+            {"unit": u.name, "topic": name, "position": i} for u in g.units for i, name in enumerate(u.topics, start=1)
         ],
     )
     tx.run(

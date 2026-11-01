@@ -4,7 +4,7 @@ from core.ingest.schema import Prereq
 NAMES = {"Relational Model", "SQL", "Joins", "Normalization"}
 
 
-def _pairs(edges):
+def _pairs(edges: list[Prereq]) -> list[tuple[str, str]]:
     return [(e.topic, e.requires) for e in edges]
 
 

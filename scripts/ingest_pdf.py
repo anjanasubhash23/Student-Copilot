@@ -1,7 +1,7 @@
 """Ingest a course PDF into the topic graph.
 
-    python scripts/ingest_pdf.py data/courses/dbms/notes.pdf --course dbms
-    python scripts/ingest_pdf.py notes.pdf --course dbms --dry-run   # skip Neo4j
+python scripts/ingest_pdf.py data/courses/dbms/notes.pdf --course dbms
+python scripts/ingest_pdf.py notes.pdf --course dbms --dry-run   # skip Neo4j
 """
 
 import argparse

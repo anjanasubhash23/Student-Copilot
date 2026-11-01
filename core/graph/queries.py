@@ -1,7 +1,9 @@
+from typing import Any
+
 from core.graph.client import get_driver
 
 
-def get_units(course: str) -> list[dict]:
+def get_units(course: str) -> list[dict[str, Any]]:
     with get_driver().session() as session:
         result = session.run(
             """
@@ -15,7 +17,7 @@ def get_units(course: str) -> list[dict]:
         return [r.data() for r in result]
 
 
-def get_topic(course: str, name: str) -> dict | None:
+def get_topic(course: str, name: str) -> dict[str, Any] | None:
     with get_driver().session() as session:
         record = session.run(
             """

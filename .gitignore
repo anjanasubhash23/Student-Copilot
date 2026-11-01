@@ -1,9 +1,24 @@
 __pycache__/
 *.pyc
 .venv/
-.env
 *.egg-info/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# SQLite databases (incl. WAL side files)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+
 data/cache/*
 !data/cache/.gitkeep
 data/courses/*/*.pdf

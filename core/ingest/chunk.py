@@ -40,7 +40,8 @@ def chunk_pages(pages: list[Page], max_chars: int = 6000, overlap: int = 500) ->
         if current and size + len(text) > max_chars:
             chunks.append(_make(len(chunks), current))
             # carry trailing paragraphs into the next chunk so topics spanning a boundary aren't lost
-            tail, tail_size = [], 0
+            tail: list[tuple[int, str]] = []
+            tail_size = 0
             for item in reversed(current):
                 if tail_size + len(item[1]) > overlap:
                     break

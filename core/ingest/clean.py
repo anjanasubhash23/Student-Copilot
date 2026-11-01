@@ -14,7 +14,7 @@ def _key(line: str) -> str:
 
 
 def _edges(lines: list[str]) -> list[str]:
-    content = [l for l in lines if l]
+    content = [line for line in lines if line]
     return content[:EDGE_LINES] + content[-EDGE_LINES:]
 
 
@@ -22,19 +22,19 @@ def _boilerplate(pages: list[list[str]]) -> set[str]:
     """Edge lines repeated on at least half the pages (digits ignored, so 'Lecture 3' matches 'Lecture 4')."""
     if len(pages) < 3:
         return set()
-    counts = Counter()
+    counts: Counter[str] = Counter()
     for lines in pages:
-        counts.update({_key(l) for l in _edges(lines) if len(l) <= 80})
+        counts.update({_key(line) for line in _edges(lines) if len(line) <= 80})
     return {k for k, c in counts.items() if c >= len(pages) / 2}
 
 
 def clean_pages(pages: list[Page]) -> list[Page]:
-    split = [[l.strip() for l in p.text.splitlines()] for p in pages]
+    split = [[line.strip() for line in p.text.splitlines()] for p in pages]
     boiler = _boilerplate(split)
     out = []
-    for page, lines in zip(pages, split):
+    for page, lines in zip(pages, split, strict=True):
         edges = set(_edges(lines))
-        kept = [l for l in lines if not PAGE_NUMBER.match(l) and not (l in edges and _key(l) in boiler)]
+        kept = [line for line in lines if not PAGE_NUMBER.match(line) and not (line in edges and _key(line) in boiler)]
         text = "\n".join(kept)
         text = re.sub(r"(\w)-\n(\w)", r"\1\2", text)
         text = re.sub(r"[ \t]+", " ", text)
