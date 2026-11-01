@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from app.settings import Settings
@@ -5,12 +7,19 @@ from app.settings import Settings
 APP_ENV_VARS = [
     "APP_ENV",
     "LOG_LEVEL",
-    "ANTHROPIC_API_KEY",
+    "LLM_PROVIDER",
     "LLM_MODEL",
+    "LLM_TEMPERATURE",
+    "LLM_MAX_TOKENS",
     "LLM_CONCURRENCY",
+    "OLLAMA_BASE_URL",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
     "NEO4J_URI",
     "NEO4J_USER",
     "NEO4J_PASSWORD",
+    "SQLITE_PATH",
 ]
 
 
@@ -22,6 +31,12 @@ def _isolated_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def settings() -> Settings:
+def settings(tmp_path: Path) -> Settings:
     # _env_file=None: never read the developer's real .env in tests
-    return Settings(_env_file=None, app_env="test", neo4j_password="test-password")
+    return Settings(
+        _env_file=None,
+        app_env="test",
+        neo4j_password="test-password",
+        sqlite_path=tmp_path / "app.db",
+        cache_dir=tmp_path / "cache",
+    )

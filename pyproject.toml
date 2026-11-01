@@ -5,8 +5,11 @@ description = "Adaptive learning platform built on a Neo4j knowledge graph of co
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "anthropic>=0.40,<1",
     "fastapi>=0.162,<1",
+    "langchain-anthropic>=1.7,<2",
+    "langchain-core>=1.7,<2",
+    "langchain-ollama>=1.1,<2",
+    "langchain-openai>=1.7,<2",
     "neo4j>=5.28,<6",
     "pydantic>=2.14,<3",
     "pydantic-settings>=2.16,<3",

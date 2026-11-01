@@ -13,9 +13,14 @@ __pycache__/
 *.pem
 *.key
 
+# SQLite databases (incl. WAL side files)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+
 data/cache/*
 !data/cache/.gitkeep
 data/courses/*/*.pdf
 eval/data/*
 !eval/data/.gitkeep
-project.md

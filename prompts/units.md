@@ -5,8 +5,6 @@ Group them into 4–12 units the way a syllabus would, such as "Relational Model
 - Use every topic exactly once.
 - Copy topic names exactly as written.
 
-Submit the units with the submit tool.
-
 <topics>
 {{topics}}
 </topics>
