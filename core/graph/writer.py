@@ -1,72 +1,155 @@
-"""Write a CourseGraph to Neo4j, replacing any previous ingest of the same course.
+"""Write a SpaceGraph to Neo4j, replacing whatever the space held before.
 
-(:Course)-[:HAS_UNIT]->(:Unit)<-[:IN_UNIT]-(:Topic)-[:REQUIRES]->(:Topic)
+(:Unit)-[:HAS_TOPIC {position}]->(:Topic)
+(:Chunk)-[:ABOUT]->(:Topic)
+(:Topic)-[:PREREQUISITE_OF {confidence, reason, extracted_by}]->(:Topic)   learn the first, then the second
+
+Every node carries `space_id`; one database serves all spaces. Replacing in a single transaction keeps
+re-ingest idempotent and never leaves a half-written graph. A space holds one source for now: merging
+topics across several sources comes with multi-source ingest.
 """
 
-from neo4j import ManagedTransaction
+from typing import Any
+
+from neo4j import Driver, ManagedTransaction
 
 from core.graph.client import get_driver
-from core.ingest.schema import CourseGraph
+from core.graph.ids import assign_ids, chunk_id
+from core.ingest.schema import SpaceGraph
 
-CONSTRAINTS = [
-    "CREATE CONSTRAINT course_id IF NOT EXISTS FOR (c:Course) REQUIRE c.id IS UNIQUE",
-    "CREATE CONSTRAINT topic_key IF NOT EXISTS FOR (t:Topic) REQUIRE (t.course, t.name) IS UNIQUE",
+LABELS = ("Topic", "Unit", "Chunk")
+
+SCHEMA = [
+    *(f"CREATE CONSTRAINT {label.lower()}_id IF NOT EXISTS FOR (n:{label}) REQUIRE n.id IS UNIQUE" for label in LABELS),
+    *(f"CREATE INDEX {label.lower()}_space IF NOT EXISTS FOR (n:{label}) ON (n.space_id)" for label in LABELS),
 ]
 
 
-def write_course_graph(graph: CourseGraph) -> None:
-    with get_driver().session() as session:
-        for stmt in CONSTRAINTS:
+def write_space_graph(graph: SpaceGraph, driver: Driver | None = None) -> None:
+    with (driver or get_driver()).session() as session:
+        for stmt in SCHEMA:
             session.run(stmt)
-        session.execute_write(_write, graph)
+        session.execute_write(_write, rows(graph))
 
 
-def _write(tx: ManagedTransaction, g: CourseGraph) -> None:
-    course = g.course
+def rows(g: SpaceGraph) -> dict[str, Any]:
+    """Flatten the graph into the parameter lists the Cypher below expects. Pure, so it's unit-tested."""
+    topic_ids = assign_ids(g.space_id, [t.name for t in g.topics])
+    unit_ids = assign_ids(g.space_id, [u.name for u in g.units])
+    prereq_label = g.extracted_by.label("prereqs")
+    topic_label = g.extracted_by.label("topics")
+    return {
+        "space_id": g.space_id,
+        "units": [{"id": unit_ids[u.name], "name": u.name, "order": u.order} for u in g.units],
+        "topics": [
+            {
+                "id": topic_ids[t.name],
+                "name": t.name,
+                "summary": t.summary,
+                "aliases": t.aliases,
+                "pages": t.pages,
+                "first_seen": t.first_seen,
+                "source_id": g.source_id,
+                "extracted_by": topic_label,
+            }
+            for t in g.topics
+        ],
+        "chunks": [
+            {
+                "id": chunk_id(g.space_id, g.source_id, c.id),
+                "source_id": g.source_id,
+                "text": c.text,
+                "page_start": c.page_start,
+                "page_end": c.page_end,
+            }
+            for c in g.chunks
+        ],
+        "has_topic": [
+            {"unit": unit_ids[u.name], "topic": topic_ids[name], "position": i}
+            for u in g.units
+            for i, name in enumerate(u.topics, start=1)
+        ],
+        "about": [
+            {"chunk": chunk_id(g.space_id, g.source_id, c), "topic": topic_ids[t.name]}
+            for t in g.topics
+            for c in t.chunks
+        ],
+        "prereqs": [
+            {
+                "from": topic_ids[p.requires],
+                "to": topic_ids[p.topic],
+                "reason": p.reason,
+                "confidence": p.confidence,
+                "extracted_by": prereq_label,
+            }
+            for p in g.prereqs
+        ],
+    }
+
+
+def _write(tx: ManagedTransaction, r: dict[str, Any]) -> None:
+    space_id = r["space_id"]
     tx.run(
         """
-        MATCH (n) WHERE (n:Course AND n.id = $course) OR ((n:Unit OR n:Topic) AND n.course = $course)
+        MATCH (n) WHERE n.space_id = $space_id AND (n:Topic OR n:Unit OR n:Chunk)
         DETACH DELETE n
         """,
-        course=course,
+        space_id=space_id,
     )
-    tx.run("CREATE (:Course {id: $course, source: $source})", course=course, source=g.source)
     tx.run(
         """
-        MATCH (c:Course {id: $course})
         UNWIND $units AS u
-        CREATE (c)-[:HAS_UNIT]->(:Unit {course: $course, name: u.name, order: u.order})
+        CREATE (:Unit {id: u.id, space_id: $space_id, name: u.name, order: u.order})
         """,
-        course=course,
-        units=[u.model_dump(include={"name", "order"}) for u in g.units],
+        space_id=space_id,
+        units=r["units"],
     )
     tx.run(
         """
         UNWIND $topics AS t
-        CREATE (:Topic {course: $course, name: t.name, summary: t.summary, pages: t.pages, aliases: t.aliases})
+        CREATE (:Topic {id: t.id, space_id: $space_id, name: t.name, summary: t.summary, aliases: t.aliases,
+                        pages: t.pages, first_seen: t.first_seen, source_id: t.source_id,
+                        extracted_by: t.extracted_by})
         """,
-        course=course,
-        topics=[t.model_dump() for t in g.topics],
+        space_id=space_id,
+        topics=r["topics"],
     )
     tx.run(
         """
-        UNWIND $members AS m
-        MATCH (u:Unit {course: $course, name: m.unit})
-        MATCH (t:Topic {course: $course, name: m.topic})
-        CREATE (t)-[:IN_UNIT {position: m.position}]->(u)
+        UNWIND $chunks AS c
+        CREATE (:Chunk {id: c.id, space_id: $space_id, source_id: c.source_id, text: c.text,
+                        page_start: c.page_start, page_end: c.page_end})
         """,
-        course=course,
-        members=[
-            {"unit": u.name, "topic": name, "position": i} for u in g.units for i, name in enumerate(u.topics, start=1)
-        ],
+        space_id=space_id,
+        chunks=r["chunks"],
     )
     tx.run(
         """
-        UNWIND $edges AS e
-        MATCH (a:Topic {course: $course, name: e.topic})
-        MATCH (b:Topic {course: $course, name: e.requires})
-        CREATE (a)-[:REQUIRES {reason: e.reason}]->(b)
+        UNWIND $rels AS m
+        MATCH (u:Unit {id: m.unit, space_id: $space_id})
+        MATCH (t:Topic {id: m.topic, space_id: $space_id})
+        CREATE (u)-[:HAS_TOPIC {position: m.position}]->(t)
         """,
-        course=course,
-        edges=[p.model_dump() for p in g.prereqs],
+        space_id=space_id,
+        rels=r["has_topic"],
+    )
+    tx.run(
+        """
+        UNWIND $rels AS a
+        MATCH (c:Chunk {id: a.chunk, space_id: $space_id})
+        MATCH (t:Topic {id: a.topic, space_id: $space_id})
+        CREATE (c)-[:ABOUT]->(t)
+        """,
+        space_id=space_id,
+        rels=r["about"],
+    )
+    tx.run(
+        """
+        UNWIND $rels AS e
+        MATCH (a:Topic {id: e.from, space_id: $space_id})
+        MATCH (b:Topic {id: e.to, space_id: $space_id})
+        CREATE (a)-[:PREREQUISITE_OF {reason: e.reason, confidence: e.confidence, extracted_by: e.extracted_by}]->(b)
+        """,
+        space_id=space_id,
+        rels=r["prereqs"],
     )

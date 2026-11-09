@@ -54,8 +54,22 @@ def _model() -> BaseChatModel:
     return chat_model(get_settings())
 
 
+def _prompt_text(name: str) -> str:
+    return (get_settings().prompts_dir / f"{name}.md").read_text()
+
+
+def prompt_version(name: str) -> str:
+    """Short hash of the prompt file. Recorded on what the prompt produced, so output can be traced to it."""
+    return hashlib.sha256(_prompt_text(name).encode()).hexdigest()[:8]
+
+
+def model_label() -> str:
+    settings = get_settings()
+    return f"{settings.llm_provider}/{settings.llm_model}"
+
+
 def load_prompt(name: str, **values: str) -> str:
-    text = (get_settings().prompts_dir / f"{name}.md").read_text()
+    text = _prompt_text(name)
     for key, value in values.items():
         text = text.replace("{{" + key + "}}", value)
     return text

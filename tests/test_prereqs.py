@@ -25,3 +25,12 @@ def test_drops_edge_that_would_close_a_cycle():
         Prereq(topic="Relational Model", requires="Joins"),
     ]
     assert _pairs(validate_prereqs(edges, NAMES)) == [("Joins", "SQL"), ("SQL", "Relational Model")]
+
+
+def test_weaker_edge_loses_a_cycle_and_confidence_is_clamped():
+    edges = [
+        Prereq(topic="SQL", requires="Joins", confidence=0.3),
+        Prereq(topic="Joins", requires="SQL", confidence=1.4),
+    ]
+    [kept] = validate_prereqs(edges, NAMES)
+    assert (kept.topic, kept.requires, kept.confidence) == ("Joins", "SQL", 1.0)

@@ -72,3 +72,15 @@ def test_cache_is_keyed_by_model(stub: StubModel, settings: Settings, monkeypatc
     monkeypatch.setattr(llm, "get_settings", lambda: _settings(settings, llm_model="other-model"))
     llm.structured("q", Answer)
     assert stub.calls == 2
+
+
+def test_prompt_version_changes_with_the_prompt(settings: Settings, tmp_path: Any, monkeypatch: pytest.MonkeyPatch):
+    prompts = tmp_path / "prompts"
+    prompts.mkdir()
+    monkeypatch.setattr(llm, "get_settings", lambda: _settings(settings, prompts_dir=prompts))
+    (prompts / "x.md").write_text("List the topics.")
+    first = llm.prompt_version("x")
+    assert len(first) == 8
+    assert llm.prompt_version("x") == first
+    (prompts / "x.md").write_text("List the topics, briefly.")
+    assert llm.prompt_version("x") != first

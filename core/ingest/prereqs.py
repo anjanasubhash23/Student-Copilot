@@ -14,16 +14,20 @@ def extract_prereqs(topics: list[Topic], units: list[Unit]) -> list[Prereq]:
 
 
 def validate_prereqs(edges: list[Prereq], names: set[str]) -> list[Prereq]:
-    """Drop edges to unknown topics, self-loops, duplicates, and any edge that would close a cycle."""
+    """Drop edges to unknown topics, self-loops, duplicates, and any edge that would close a cycle.
+
+    Edges are considered most-confident first, so when two edges form a cycle the weaker one is dropped.
+    Confidence is clamped to [0, 1].
+    """
     graph: dict[str, set[str]] = defaultdict(set)
     kept = []
-    for edge in edges:
+    for edge in sorted(edges, key=lambda e: -e.confidence):  # stable: ties keep the model's order
         if edge.topic not in names or edge.requires not in names or edge.topic == edge.requires:
             continue
         if edge.requires in graph[edge.topic] or _reachable(graph, edge.requires, edge.topic):
             continue
         graph[edge.topic].add(edge.requires)
-        kept.append(edge)
+        kept.append(edge.model_copy(update={"confidence": min(max(edge.confidence, 0.0), 1.0)}))
     return kept
 
 
