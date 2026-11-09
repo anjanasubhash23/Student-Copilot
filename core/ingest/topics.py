@@ -8,7 +8,7 @@ from core.llm import load_prompt, structured
 def _topics_in(chunk: Chunk) -> list[Topic]:
     out = structured(load_prompt("topics", chunk=chunk.text), TopicsOut)
     pages = list(range(chunk.page_start, chunk.page_end + 1))
-    return [Topic(name=t.name.strip(), summary=t.summary.strip(), pages=pages) for t in out.topics]
+    return [Topic(name=t.name.strip(), summary=t.summary.strip(), pages=pages, chunks=[chunk.id]) for t in out.topics]
 
 
 def extract_topics(chunks: list[Chunk]) -> list[Topic]:

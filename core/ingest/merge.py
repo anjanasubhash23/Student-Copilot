@@ -28,6 +28,7 @@ def merge_topics(topics: list[Topic], threshold: float = 0.92) -> list[Topic]:
             continue
         kept = merged[match]
         kept.pages = sorted(set(kept.pages) | set(topic.pages))
+        kept.chunks = sorted(set(kept.chunks) | set(topic.chunks))
         if topic.name != kept.name and topic.name not in kept.aliases:
             kept.aliases.append(topic.name)
         if len(topic.summary) > len(kept.summary):

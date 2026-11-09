@@ -1,6 +1,6 @@
 # study-copilot
 
-Adaptive learning platform. Turns course material into a Neo4j graph of topics, units and prerequisites, which later phases use for Graph-RAG tutoring and Bayesian Knowledge Tracing.
+Adaptive learning platform. Turns the material in a study space into a Neo4j graph of topics, units and prerequisites, which later phases use for Graph-RAG tutoring and Bayesian Knowledge Tracing.
 
 Everything runs locally with no paid services: Neo4j Community in Docker, SQLite on disk, and Ollama as the default LLM. An external LLM API (Anthropic, OpenAI or any OpenAI-compatible server) can be used instead.
 
@@ -24,24 +24,27 @@ core/
 │   └── spaces.py        # SqliteStudySpaceRepository
 ├── sources/pdf.py       # PDF → pages
 ├── ingest/
-│   ├── schema.py        # Page, Chunk, Topic, Unit, Prereq, CourseGraph
+│   ├── schema.py        # Page, Chunk, Topic, Unit, Prereq, SpaceGraph
 │   ├── clean.py         # strip headers/footers/page numbers
 │   ├── chunk.py         # pages → overlapping chunks
 │   ├── topics.py        # chunk → topics (LLM)
 │   ├── merge.py         # dedupe topics across chunks
 │   ├── units.py         # topics → ordered units (LLM)
 │   ├── prereqs.py       # topics → prerequisite edges (LLM), cycles removed
+│   ├── recall.py        # score topics against hand-made labels
 │   └── pipeline.py      # runs the stages above
 ├── graph/
 │   ├── client.py        # Neo4j driver
-│   ├── writer.py        # CourseGraph → Neo4j
-│   └── queries.py       # units, topic detail, learning path
+│   ├── ids.py           # node ids: {space_id}:{slug}
+│   ├── writer.py        # SpaceGraph → Neo4j, replacing the space's graph
+│   └── queries.py       # units, topic detail, learning path, whole map (all space-scoped)
 ├── questions/           # later phase: question generation
 ├── tutor/               # later phase: LangGraph tutor
 └── mastery/             # later phase: BKT
 prompts/                 # topics.md, units.md, prereqs.md
 scripts/ingest_pdf.py    # CLI entry point
-eval/corpora.md          # PDFs used to judge ingest quality (files in eval/data/)
+eval/corpora.md          # PDFs used to judge ingest quality, and the results
+eval/run_eval.py         # topic recall/precision of a graph against labels in eval/data/
 tests/
 ```
 
@@ -96,13 +99,26 @@ The API doesn't need the LLM to start, so Ollama can be off.
 
 ## Ingest a PDF
 
-Uses the configured LLM provider.
+Uses the configured LLM provider. A PDF is ingested into a study space (stored in SQLite):
 
 ```bash
-uv run python scripts/ingest_pdf.py path/to/dbms.pdf --course dbms
+uv run python scripts/ingest_pdf.py path/to/dbms.pdf --new-space "Semester 5 DBMS"   # prints the space id
+uv run python scripts/ingest_pdf.py path/to/dbms.pdf --space <space-id>              # re-ingest
 ```
 
-The graph is also saved as JSON at `data/cache/<course>.graph.json`. Use `--dry-run` to skip Neo4j.
+Re-ingesting replaces the space's graph; a space holds one source until multi-source ingest lands. The graph is also saved as JSON at `data/cache/<space-id>.graph.json`. Use `--dry-run` to skip Neo4j.
+
+### The graph in Neo4j
+
+```
+(:Unit)-[:HAS_TOPIC {position}]->(:Topic)
+(:Chunk)-[:ABOUT]->(:Topic)
+(:Topic)-[:PREREQUISITE_OF {confidence, reason, extracted_by}]->(:Topic)   learn the first, then the second
+```
+
+Every node has `space_id`, and topic and unit ids are `{space_id}:{slug}`. Every query filters on `space_id`; `tests/test_graph_scoping.py` fails if one doesn't. `extracted_by` records the model and a hash of the prompt file (e.g. `ollama/llama3.1:8b prereqs@1a2b3c4d`), so edges can be traced to the prompt that made them.
+
+To check topic quality against a hand-made label list, see [eval/corpora.md](eval/corpora.md).
 
 LLM responses are cached per provider and model, so re-running on the same PDF is free. Change a prompt and only the affected calls run again.
 
