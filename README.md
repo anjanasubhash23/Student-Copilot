@@ -83,7 +83,7 @@ tests/
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/): `brew install uv`
 - Docker with Compose v2: Docker Desktop, OrbStack or Colima (all free for personal use)
-- [Node.js](https://nodejs.org) 20 or newer, for the web app: `brew install node`
+- [Node.js](https://nodejs.org) 20.9 or newer, for the web app: `brew install node`
 - Optional, for local LLMs: [Ollama](https://ollama.com): `brew install ollama`
 - Optional, for scanned PDFs: Tesseract OCR: `brew install tesseract`
 

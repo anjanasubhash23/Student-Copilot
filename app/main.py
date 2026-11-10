@@ -9,15 +9,15 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, closing
 from importlib.metadata import version
 
-import httpx
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
-from neo4j.exceptions import DriverError, Neo4jError
+from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
 
 from app import health
 from app.routes import auth, flashcards, learning, spaces
 from app.settings import Settings, get_settings
 from core.graph.client import create_driver
+from core.llm import unavailable_reason
 from core.storage import sqlite
 
 log = logging.getLogger(__name__)
@@ -65,8 +65,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(learning.router)
     app.include_router(flashcards.router)
 
-    @app.exception_handler(DriverError)
-    @app.exception_handler(Neo4jError)
+    @app.exception_handler(ServiceUnavailable)
+    @app.exception_handler(SessionExpired)
+    @app.exception_handler(AuthError)
     async def graph_unavailable(_request: Request, exc: Exception) -> JSONResponse:
         log.warning("Neo4j error: %s: %s", type(exc).__name__, exc)
         return JSONResponse(
@@ -74,13 +75,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
-    @app.exception_handler(httpx.TransportError)
-    @app.exception_handler(ConnectionError)
-    async def llm_unavailable(_request: Request, exc: Exception) -> JSONResponse:
-        log.warning("LLM connection error: %s: %s", type(exc).__name__, exc)
-        return JSONResponse(
-            {"detail": f"the language model ({settings.llm_provider}) isn't reachable; is it running?"},
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
+    @app.exception_handler(Exception)
+    async def unexpected(_request: Request, exc: Exception) -> JSONResponse:
+        # LLM problems the user can fix get a 503 saying how; anything else is a plain 500.
+        if reason := unavailable_reason(exc):
+            log.warning("LLM unavailable: %s: %s", type(exc).__name__, exc)
+            return JSONResponse({"detail": reason}, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+        log.exception("unhandled error")
+        return JSONResponse({"detail": "something went wrong"}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     return app

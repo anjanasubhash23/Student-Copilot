@@ -31,7 +31,9 @@ SCHEMA = [
 def ensure_schema(driver: Driver | None = None) -> None:
     with (driver or get_driver()).session() as session:
         for stmt in SCHEMA:
-            session.run(stmt)
+            session.run(stmt).consume()
+        # New indexes populate in the background; wait so the first search after a build finds the graph.
+        session.run("CALL db.awaitIndexes(120)").consume()
 
 
 def write_space_graph(graph: SpaceGraph, driver: Driver | None = None) -> None:

@@ -19,7 +19,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await (mode === "login" ? api.login(email, password) : api.register(email, password));
-      router.replace("/");
+      router.replace("/spaces");
     } catch (err) {
       setError(errorMessage(err));
     } finally {

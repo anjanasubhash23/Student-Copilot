@@ -30,7 +30,9 @@ export default function FlashcardsPage() {
       .catch((e) => setError(errorMessage(e)));
   }, [id]);
 
-  useEffect(load, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (error) return <p className="text-sm text-critical">{error}</p>;
   if (!cards) return <p className="text-sm text-muted">Loading…</p>;

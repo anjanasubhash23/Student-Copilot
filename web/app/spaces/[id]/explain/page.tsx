@@ -43,7 +43,10 @@ function Chat() {
   const [busy, setBusy] = useState(false);
   const end = useRef<HTMLDivElement>(null);
 
-  useEffect(() => end.current?.scrollIntoView({ behavior: "smooth" }), [turns]);
+  useEffect(() => {
+    // block body: scrollIntoView returns a Promise in newer browsers, and an effect may only return a cleanup
+    end.current?.scrollIntoView({ behavior: "smooth" });
+  }, [turns]);
 
   async function ask(e: React.FormEvent) {
     e.preventDefault();

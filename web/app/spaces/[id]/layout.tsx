@@ -24,7 +24,7 @@ export default function SpaceLayout({ children }: { children: React.ReactNode })
   const [space, setSpace] = useState<Space | null>(null);
 
   useEffect(() => {
-    api.space(id).then(setSpace).catch(() => router.replace("/"));
+    api.space(id).then(setSpace).catch(() => router.replace("/spaces"));
   }, [id, router]);
 
   const base = `/spaces/${id}`;
@@ -32,7 +32,7 @@ export default function SpaceLayout({ children }: { children: React.ReactNode })
     <Shell>
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <Link href="/" className="text-sm text-muted hover:underline">
+          <Link href="/spaces" className="text-sm text-muted hover:underline">
             ← All spaces
           </Link>
           <h1 className="text-xl font-semibold">{space?.name ?? "…"}</h1>
@@ -42,7 +42,7 @@ export default function SpaceLayout({ children }: { children: React.ReactNode })
           onClick={async () => {
             if (!space || !confirm(`Delete "${space.name}" with all its sources, progress and flashcards?`)) return;
             await api.deleteSpace(id);
-            router.replace("/");
+            router.replace("/spaces");
           }}
         >
           Delete space

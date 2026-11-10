@@ -122,10 +122,24 @@ def test_links_are_checked_for_ssrf(app_client: TestClient, monkeypatch: pytest.
     assert yt.status_code == 202 and yt.json()["kind"] == "youtube"
 
 
-def test_learning_needs_a_ready_map(app_client: TestClient) -> None:
+def test_learning_needs_a_map(app_client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
     _register(app_client)
     space_id = _space(app_client)
-    assert app_client.post(f"/spaces/{space_id}/practice/next", json={}).status_code == 409
+    r = app_client.post(f"/spaces/{space_id}/practice/next", json={})
+    assert r.status_code == 409 and "add a source" in r.json()["detail"]
+
+    # first build still running: nothing to learn from yet
+    with closing(sqlite.connect(settings.sqlite_path)) as conn:
+        SqliteStudySpaceRepository(conn).set_graph_status(space_id, "building")
+    monkeypatch.setattr(deps, "get_space_map", lambda sid, driver: SpaceMap.build([], []))
+    r = app_client.post(f"/spaces/{space_id}/practice/next", json={})
+    assert r.status_code == 409 and "still being built" in r.json()["detail"]
+
+    # a rebuild (another source added) keeps the previous map usable
+    monkeypatch.setattr(deps, "get_space_map", lambda sid, driver: SpaceMap.build([TopicInfo(id="t", name="T")], []))
+    monkeypatch.setattr(bank, "topic_chunks", lambda *a, **kw: [])
+    r = app_client.post(f"/spaces/{space_id}/practice/next", json={})
+    assert r.status_code == 200
 
 
 # The learning loop on a two-topic map: Relational Model → 3NF

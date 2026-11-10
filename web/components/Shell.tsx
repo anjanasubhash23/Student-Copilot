@@ -26,7 +26,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen">
       <header className="border-b border-line">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <Link href="/" className="font-semibold">
+          <Link href="/spaces" className="font-semibold">
             Study Copilot
           </Link>
           <div className="flex items-center gap-3 text-sm text-ink-2">
@@ -35,7 +35,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               className="btn-ghost"
               onClick={async () => {
                 await api.logout();
-                router.replace("/login");
+                router.replace("/");
               }}
             >
               Sign out

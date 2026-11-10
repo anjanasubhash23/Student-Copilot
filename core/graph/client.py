@@ -10,6 +10,8 @@ def create_driver(settings: Settings) -> Driver:
     return GraphDatabase.driver(
         settings.neo4j_uri,
         auth=(settings.neo4j_user, settings.neo4j_password.get_secret_value()),
+        # Skip INFORMATION notices such as "index already exists" on every graph write.
+        notifications_min_severity="WARNING",
     )
 
 
