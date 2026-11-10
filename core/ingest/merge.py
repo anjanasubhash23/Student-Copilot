@@ -27,8 +27,8 @@ def merge_topics(topics: list[Topic], threshold: float = 0.92) -> list[Topic]:
             keys.append(key)
             continue
         kept = merged[match]
-        kept.pages = sorted(set(kept.pages) | set(topic.pages))
-        kept.chunks = sorted(set(kept.chunks) | set(topic.chunks))
+        kept.chunks = list(dict.fromkeys([*kept.chunks, *topic.chunks]))
+        kept.first_seen = min(kept.first_seen, topic.first_seen)
         if topic.name != kept.name and topic.name not in kept.aliases:
             kept.aliases.append(topic.name)
         if len(topic.summary) > len(kept.summary):

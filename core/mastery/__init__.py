@@ -1,1 +1,1 @@
-"""Mastery tracking (Bayesian Knowledge Tracing). Implemented in a later phase."""
+"""Mastery tracking: Bayesian Knowledge Tracing per topic, topic selection, FSRS reviews."""

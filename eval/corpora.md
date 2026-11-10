@@ -15,7 +15,7 @@ PDFs used to check ingest quality. Put the files in `eval/data/` (they're gitign
 2. Ingest the PDF (`--dry-run` is enough) and score the graph JSON it writes:
 
    ```bash
-   uv run python scripts/ingest_pdf.py eval/data/dbms.pdf --new-space "eval: dbms" --dry-run
+   uv run python scripts/ingest.py eval/data/dbms.pdf --dry-run
    uv run python eval/run_eval.py data/cache/<space-id>.graph.json eval/data/dbms.topics.txt
    ```
 

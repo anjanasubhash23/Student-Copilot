@@ -4,7 +4,7 @@ a PostgreSQL implementation would only need to pass the same tests in tests/test
 
 from typing import Protocol
 
-from core.spaces.models import StudySpace
+from core.spaces.models import GraphStatus, StudySpace
 
 
 class AlreadyExistsError(Exception):
@@ -20,4 +20,14 @@ class StudySpaceRepository(Protocol):
 
     def list_all(self) -> list[StudySpace]:
         """Oldest first."""
+        ...
+
+    def list_for_owner(self, owner_id: str) -> list[StudySpace]:
+        """Oldest first."""
+        ...
+
+    def set_graph_status(self, space_id: str, status: GraphStatus, error: str | None = None) -> None: ...
+
+    def delete(self, space_id: str) -> None:
+        """Deletes the space and, by cascade, its sources, jobs, questions, attempts and mastery rows."""
         ...

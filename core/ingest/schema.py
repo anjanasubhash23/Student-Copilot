@@ -1,29 +1,38 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+SourceKind = Literal["pdf", "pptx", "docx", "text", "web", "youtube"]
 
 
 class Page(BaseModel):
+    """A located piece of a source: a PDF page, a slide, a document section, or a stretch of a video."""
+
     number: int
     text: str
+    timestamp: float | None = Field(default=None, description="Seconds into the video, for YouTube sources.")
 
 
 class Chunk(BaseModel):
     id: int = Field(description="Position of the chunk within its source, from 0.")
+    source_id: str = ""
     page_start: int
     page_end: int
+    timestamp: float | None = None
     text: str
+
+    @property
+    def key(self) -> str:
+        """Unique within a space: `{source_id}:{id}`."""
+        return f"{self.source_id}:{self.id}"
 
 
 class Topic(BaseModel):
     name: str
     summary: str
-    pages: list[int] = Field(default_factory=list)
     aliases: list[str] = Field(default_factory=list)
-    chunks: list[int] = Field(default_factory=list, description="Ids of the chunks the topic was found in.")
-
-    @property
-    def first_seen(self) -> int:
-        """Page where the material first introduces the topic (0 if unknown)."""
-        return min(self.pages, default=0)
+    chunks: list[str] = Field(default_factory=list, description="Keys of the chunks the topic was found in.")
+    first_seen: int = Field(default=0, description="Position of the first chunk that teaches it, across sources.")
 
 
 class Unit(BaseModel):
@@ -50,12 +59,26 @@ class ExtractedBy(BaseModel):
         return f"{self.model} {prompt}@{self.prompts[prompt]}"
 
 
+class SourceRef(BaseModel):
+    id: str
+    name: str
+    kind: SourceKind
+
+
+class SourceExtraction(BaseModel):
+    """What ingest keeps per source: its chunks and the topics found in each, before merging across sources."""
+
+    source: SourceRef
+    pages: int
+    chunks: list[Chunk]
+    topics: list[Topic]
+
+
 class SpaceGraph(BaseModel):
-    """The topic graph built from one source, for one study space."""
+    """The topic graph built from all of a study space's sources."""
 
     space_id: str
-    source_id: str = Field(description="Content hash of the source file, so re-ingesting it is recognisable.")
-    source: str = Field(description="File name of the source.")
+    sources: list[SourceRef]
     chunks: list[Chunk]
     topics: list[Topic]
     units: list[Unit]

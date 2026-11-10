@@ -53,10 +53,32 @@ class Settings(BaseSettings):
 
     prompts_dir: Path = ROOT / "prompts"
     cache_dir: Path = ROOT / "data" / "cache"
+    # Uploaded files (data/uploads/) and per-source extraction results (data/extracted/).
+    data_dir: Path = ROOT / "data"
 
-    @field_validator("sqlite_path")
+    # Background jobs. With RUN_WORKER the API process also runs a worker thread, so local
+    # development needs one process; set it to false and run `python -m workers.run` separately instead.
+    run_worker: bool = True
+    worker_poll_seconds: float = Field(default=1.0, gt=0)
+
+    # Per-space limits (spec section 8). Sizes in MB.
+    max_upload_mb: int = Field(default=50, ge=1)
+    max_fetch_mb: int = Field(default=20, ge=1)
+    max_sources_per_space: int = Field(default=10, ge=1)
+    max_pages_per_space: int = Field(default=300, ge=1)
+    ocr_lang: str = "eng"
+
+    # Sign-in sessions. Set SESSION_COOKIE_SECURE=true when served over HTTPS.
+    session_days: int = Field(default=30, ge=1)
+    session_cookie_secure: bool = False
+
+    # Learning loop.
+    diagnostic_questions: int = Field(default=10, ge=1, le=50)
+    numeric_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+
+    @field_validator("sqlite_path", "data_dir", "cache_dir", "prompts_dir")
     @classmethod
-    def _resolve_sqlite_path(cls, path: Path) -> Path:
+    def _resolve_path(cls, path: Path) -> Path:
         # Relative paths are relative to the project root, not to wherever the process was started.
         return path if path.is_absolute() else ROOT / path
 

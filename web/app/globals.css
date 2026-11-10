@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/* Colour roles. Mastery uses one sequential blue ramp (light = probably unknown, dark = known);
+   unassessed topics are neutral grey. Dark mode has its own steps, not an automatic flip. */
+:root {
+  --surface: #fcfcfb;
+  --surface-2: #f3f2ef;
+  --border: #e2e1dc;
+  --text: #0b0b0b;
+  --text-2: #52514e;
+  --text-muted: #77766f;
+  --accent: #2a78d6;
+  --accent-ink: #ffffff;
+  --good: #0ca30c;
+  --critical: #d03b3b;
+  --unassessed: #c9c8c2;
+  --m0: #cde2fb;
+  --m1: #9ec5f4;
+  --m2: #6da7ec;
+  --m3: #3987e5;
+  --m4: #256abf;
+  --m5: #104281;
+  --bar: #2a78d6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #1a1a19;
+    --surface-2: #242423;
+    --border: #383835;
+    --text: #f0efec;
+    --text-2: #c3c2b7;
+    --text-muted: #9a998f;
+    --accent: #3987e5;
+    --accent-ink: #ffffff;
+    --unassessed: #55544f;
+    --m0: #104281;
+    --m1: #1c5cab;
+    --m2: #2a78d6;
+    --m3: #5598e7;
+    --m4: #86b6ef;
+    --m5: #cde2fb;
+    --bar: #3987e5;
+  }
+}
+
+body {
+  background: var(--surface);
+  color: var(--text);
+}
+
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-ink: var(--text);
+  --color-ink-2: var(--text-2);
+  --color-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-good: var(--good);
+  --color-critical: var(--critical);
+}
+
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-accent-ink transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50;
+}
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-md border border-line px-3.5 py-2 text-sm font-medium text-ink transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50;
+}
+.input {
+  @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent;
+}
+.card {
+  @apply rounded-lg border border-line bg-surface p-5;
+}

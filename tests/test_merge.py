@@ -8,17 +8,17 @@ def test_normalize():
     assert normalize("Access Methods") == normalize("access method")
 
 
-def test_merges_duplicates_and_unions_pages():
+def test_merges_duplicates_and_unions_chunks():
     merged = merge_topics(
         [
-            Topic(name="B+ Tree", summary="Index.", pages=[3], chunks=[1]),
-            Topic(name="Third Normal Form", summary="3NF.", pages=[5], chunks=[2]),
-            Topic(name="B+ Trees", summary="Balanced tree index.", pages=[7], chunks=[3]),
+            Topic(name="B+ Tree", summary="Index.", chunks=["s:1"], first_seen=1),
+            Topic(name="Third Normal Form", summary="3NF.", chunks=["s:2"], first_seen=2),
+            Topic(name="B+ Trees", summary="Balanced tree index.", chunks=["s:3", "s:1"], first_seen=3),
         ]
     )
     assert [t.name for t in merged] == ["B+ Tree", "Third Normal Form"]
-    assert merged[0].pages == [3, 7]
-    assert merged[0].chunks == [1, 3]
+    assert merged[0].chunks == ["s:1", "s:3"]
+    assert merged[0].first_seen == 1
     assert merged[0].aliases == ["B+ Trees"]
     assert merged[0].summary == "Balanced tree index."
 
