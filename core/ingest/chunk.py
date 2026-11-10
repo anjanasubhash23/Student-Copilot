@@ -15,16 +15,17 @@ def _split_long(text: str, max_chars: int) -> list[str]:
     return pieces
 
 
-def _make(chunk_id: int, paras: list[tuple[int, str]]) -> Chunk:
+def _make(chunk_id: int, paras: list[tuple[int, str]], source_id: str) -> Chunk:
     return Chunk(
         id=chunk_id,
+        source_id=source_id,
         page_start=paras[0][0],
         page_end=paras[-1][0],
         text="\n\n".join(t for _, t in paras),
     )
 
 
-def chunk_pages(pages: list[Page], max_chars: int = 6000, overlap: int = 500) -> list[Chunk]:
+def chunk_pages(pages: list[Page], max_chars: int = 6000, overlap: int = 500, source_id: str = "") -> list[Chunk]:
     paras = [
         (p.number, piece)
         for p in pages
@@ -38,7 +39,7 @@ def chunk_pages(pages: list[Page], max_chars: int = 6000, overlap: int = 500) ->
     size = 0
     for page, text in paras:
         if current and size + len(text) > max_chars:
-            chunks.append(_make(len(chunks), current))
+            chunks.append(_make(len(chunks), current, source_id))
             # carry trailing paragraphs into the next chunk so topics spanning a boundary aren't lost
             tail: list[tuple[int, str]] = []
             tail_size = 0
@@ -51,5 +52,5 @@ def chunk_pages(pages: list[Page], max_chars: int = 6000, overlap: int = 500) ->
         current.append((page, text))
         size += len(text)
     if current:
-        chunks.append(_make(len(chunks), current))
+        chunks.append(_make(len(chunks), current, source_id))
     return chunks

@@ -1,6 +1,6 @@
 """Engineering rule: every Neo4j query is scoped to one study space.
 
-Finds every Cypher string passed to `.run(...)` in core/graph and checks that it uses `$space_id`,
+Finds every Cypher string (plain or f-string) passed to `.run(...)` in core/graph and checks that it uses `$space_id`,
 that the call passes `space_id=`, and that every labelled node pattern is filtered on the space,
 either inline (`{space_id: $space_id}`) or in a WHERE (`n.space_id = $space_id`).
 """
@@ -19,16 +19,20 @@ def _cypher_calls() -> list[tuple[str, ast.Call, str]]:
     calls = []
     for path in sorted(GRAPH_DIR.glob("*.py")):
         for node in ast.walk(ast.parse(path.read_text())):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "run"
-                and node.args
-                and isinstance(node.args[0], ast.Constant)
-                and isinstance(node.args[0].value, str)
-            ):
-                calls.append((f"{path.name}:{node.lineno}", node, node.args[0].value))
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "run":
+                query = _literal(node.args[0]) if node.args else None
+                if query is not None:
+                    calls.append((f"{path.name}:{node.lineno}", node, query))
     return calls
+
+
+def _literal(arg: ast.expr) -> str | None:
+    """The query text; an f-string's {...} parts become a placeholder (they only interpolate field lists)."""
+    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+        return arg.value
+    if isinstance(arg, ast.JoinedStr):
+        return "".join(str(v.value) if isinstance(v, ast.Constant) else "<fields>" for v in arg.values)
+    return None
 
 
 def _unscoped(query: str) -> list[str]:

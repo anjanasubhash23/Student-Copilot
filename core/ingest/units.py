@@ -4,7 +4,7 @@ from core.llm import load_prompt, structured
 
 def group_units(topics: list[Topic]) -> list[Unit]:
     """Ask the LLM to group topics into ordered units; anything it drops goes into 'Other'."""
-    by_position = sorted(topics, key=lambda t: min(t.pages, default=0))
+    by_position = sorted(topics, key=lambda t: t.first_seen)
     listing = "\n".join(f"- {t.name}: {t.summary}" for t in by_position)
     out = structured(load_prompt("units", topics=listing), UnitsOut)
 

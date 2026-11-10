@@ -75,6 +75,24 @@ def load_prompt(name: str, **values: str) -> str:
     return text
 
 
+def text(prompt: str) -> str:
+    """Free-text completion, cached like `structured`."""
+    settings = get_settings()
+    key = hashlib.sha256(json.dumps([settings.llm_provider, settings.llm_model, prompt]).encode()).hexdigest()
+    cached = settings.cache_dir / "llm" / f"{key}.txt"
+    if cached.exists():
+        return cached.read_text()
+    content = _model().invoke(prompt).content
+    result = (
+        content
+        if isinstance(content, str)
+        else "".join(part if isinstance(part, str) else str(part.get("text", "")) for part in content)
+    )
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    cached.write_text(result)
+    return result
+
+
 def structured[T: BaseModel](prompt: str, output: type[T]) -> T:
     """Ask the model for an instance of `output` (via tool calling or JSON schema, per provider)."""
     settings = get_settings()
