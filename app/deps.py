@@ -71,12 +71,20 @@ def owned_space(space_id: str, user: CurrentUser, conn: Db) -> StudySpace:
 Space = Annotated[StudySpace, Depends(owned_space)]
 
 
+NOT_READY = {
+    "empty": "this space has no topic map yet; add a source on the Sources tab",
+    "building": "the topic map is still being built; this takes a few minutes, see the Sources tab",
+    "failed": "building the topic map failed; see the Sources tab",
+}
+
+
 def ready_map(space: Space, driver: Neo4j) -> SpaceMap:
-    if space.graph_status != "ready":
-        raise HTTPException(status.HTTP_409_CONFLICT, "the topic map isn't ready yet; add a source and wait")
-    space_map = get_space_map(space.id, driver)
-    if not space_map.topics:
-        raise HTTPException(status.HTTP_409_CONFLICT, "no topics were found in this space's sources")
+    """The space's topic map. While a rebuild is running (a source was added), the previous map stays usable."""
+    space_map = get_space_map(space.id, driver) if space.graph_status != "empty" else None
+    if space_map is None or not space_map.topics:
+        if space.graph_status == "ready":
+            raise HTTPException(status.HTTP_409_CONFLICT, "no topics were found in this space's sources")
+        raise HTTPException(status.HTTP_409_CONFLICT, NOT_READY[space.graph_status])
     return space_map
 
 

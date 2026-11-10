@@ -84,3 +84,21 @@ def test_prompt_version_changes_with_the_prompt(settings: Settings, tmp_path: An
     assert llm.prompt_version("x") == first
     (prompts / "x.md").write_text("List the topics, briefly.")
     assert llm.prompt_version("x") != first
+
+
+class _StatusError(Exception):
+    def __init__(self, message: str, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def test_unavailable_reason_explains_fixable_llm_errors(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    monkeypatch.setattr(llm, "get_settings", lambda: settings)
+    assert "ollama pull llama3.1:8b" in (
+        llm.unavailable_reason(_StatusError("model 'llama3.1:8b' not found", 404)) or ""
+    )
+    assert "isn't reachable" in (llm.unavailable_reason(httpx.ConnectError("refused")) or "")
+    assert "API key was rejected" in (llm.unavailable_reason(_StatusError("unauthorized", 401)) or "")
+    assert llm.unavailable_reason(ValueError("bug")) is None

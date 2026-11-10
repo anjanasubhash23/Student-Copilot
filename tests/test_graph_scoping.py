@@ -46,7 +46,10 @@ def _unscoped(query: str) -> list[str]:
     return bad
 
 
-CALLS = _cypher_calls()
+# Database administration that reads or writes no nodes, so has no space to filter on.
+ADMIN = {"CALL db.awaitIndexes(120)"}
+
+CALLS = [c for c in _cypher_calls() if c[2].strip() not in ADMIN]
 
 
 def test_finds_queries() -> None:

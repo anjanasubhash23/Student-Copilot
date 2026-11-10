@@ -6,13 +6,13 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
-import httpx
 from neo4j import Driver
 
 from app.settings import Settings
 from core.graph.writer import delete_space_graph, write_space_graph
 from core.ingest.pipeline import build_space_graph, extract_source
 from core.ingest.schema import Page
+from core.llm import unavailable_reason
 from core.sources import SourceError, load_file, load_web, load_youtube
 from core.storage.files import FileStore
 from core.storage.jobs import Job, SqliteJobQueue
@@ -92,12 +92,11 @@ def ingest_source(ctx: Context, job: Job) -> None:
     except (JobError, *SourceError) as exc:
         sources.update(src.id, status="failed", stage=None, error=str(exc))
         raise JobError(str(exc)) from exc
-    except (httpx.TransportError, ConnectionError) as exc:
-        message = f"the language model ({ctx.settings.llm_provider}) isn't reachable; start it, then retry"
-        sources.update(src.id, status="failed", stage=None, error=message)
-        raise JobError(message) from exc
     except Exception as exc:
-        sources.update(src.id, status="failed", stage=None, error=f"ingestion failed: {type(exc).__name__}")
+        reason = unavailable_reason(exc)
+        sources.update(src.id, status="failed", stage=None, error=reason or f"ingestion failed: {type(exc).__name__}")
+        if reason:
+            raise JobError(reason) from exc
         raise
     sources.update(src.id, status="ready", stage="ready", progress=1.0, pages=len(pages), error=None)
     queue.enqueue("build_graph", src.space_id, dedupe=True)
@@ -129,6 +128,11 @@ def build_graph(ctx: Context, job: Job) -> None:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(graph.model_dump_json(indent=2))
     except Exception as exc:
-        spaces.set_graph_status(job.space_id, "failed", f"building the topic map failed: {type(exc).__name__}")
+        reason = unavailable_reason(exc)
+        spaces.set_graph_status(
+            job.space_id, "failed", reason or f"building the topic map failed: {type(exc).__name__}"
+        )
+        if reason:
+            raise JobError(reason) from exc
         raise
     spaces.set_graph_status(job.space_id, "ready")

@@ -9,6 +9,7 @@ import hashlib
 import json
 from functools import lru_cache
 
+import httpx
 from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel, SecretStr
 
@@ -91,6 +92,23 @@ def text(prompt: str) -> str:
     cached.parent.mkdir(parents=True, exist_ok=True)
     cached.write_text(result)
     return result
+
+
+def unavailable_reason(exc: BaseException) -> str | None:
+    """A message for the user if `exc` means the LLM can't be used (not running, model missing, key rejected)."""
+    settings = get_settings()
+    provider, model = settings.llm_provider, settings.llm_model
+    if isinstance(exc, httpx.TransportError | ConnectionError):
+        hint = " (start it with `ollama serve` or the Ollama app)" if provider == "ollama" else ""
+        return f"the language model ({provider}) isn't reachable{hint}"
+    status = getattr(exc, "status_code", None)
+    if status == 404 and "not found" in str(exc).lower():
+        if provider == "ollama":
+            return f"the model {model} isn't downloaded yet; run `ollama pull {model}`, then retry"
+        return f"the model {model} doesn't exist for {provider}; check LLM_MODEL in .env"
+    if status in (401, 403):
+        return f"the {provider} API key was rejected; check it in .env"
+    return None
 
 
 def structured[T: BaseModel](prompt: str, output: type[T]) -> T:
