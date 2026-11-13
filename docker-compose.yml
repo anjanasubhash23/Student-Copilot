@@ -27,7 +27,9 @@ services:
     profiles: [app]
     build: .
     image: study-copilot-api
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false  # settings can also come from the shell environment
     environment: &app-env
       NEO4J_URI: bolt://neo4j:7687
       RUN_WORKER: "false"  # the worker service runs jobs, so API restarts never interrupt one
@@ -46,7 +48,9 @@ services:
     profiles: [app]
     image: study-copilot-api
     command: ["python", "-m", "workers.run"]
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false  # settings can also come from the shell environment
     environment: *app-env
     extra_hosts: *host-gateway
     volumes:
