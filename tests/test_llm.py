@@ -40,7 +40,7 @@ class StubModel:
         self.reply = reply
         self.calls = 0
 
-    def with_structured_output(self, schema: type[BaseModel]) -> "StubModel":
+    def with_structured_output(self, schema: type[BaseModel], **kwargs: Any) -> "StubModel":
         return self
 
     def invoke(self, prompt: str) -> Any:
@@ -102,3 +102,40 @@ def test_unavailable_reason_explains_fixable_llm_errors(settings: Settings, monk
     assert "isn't reachable" in (llm.unavailable_reason(httpx.ConnectError("refused")) or "")
     assert "API key was rejected" in (llm.unavailable_reason(_StatusError("unauthorized", 401)) or "")
     assert llm.unavailable_reason(ValueError("bug")) is None
+
+
+def test_usage_is_tracked_across_threads(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from types import SimpleNamespace
+
+    class Model:
+        def with_structured_output(self, schema: type[BaseModel], **kwargs: Any) -> "Model":
+            assert kwargs.get("include_raw") is True
+            return self
+
+        def invoke(self, prompt: str) -> Any:
+            raw = SimpleNamespace(usage_metadata={"input_tokens": 10, "output_tokens": 3})
+            return {"raw": raw, "parsed": Answer(value=len(prompt)), "parsing_error": None}
+
+    monkeypatch.setattr(llm, "get_settings", lambda: settings)
+    monkeypatch.setattr(llm, "_model", lambda: Model())
+    with llm.track_usage() as usage, ThreadPoolExecutor(2) as pool:
+        results = list(llm.map_in_context(pool, lambda p: llm.structured(p, Answer), ["a", "bb", "a"]))
+    assert [r.value for r in results] == [1, 2, 1]
+    # "a" twice: the second is either a cache hit or, if both ran at once, a second call
+    assert usage.calls + usage.cached == 3
+    assert usage.input_tokens == 10 * usage.calls and usage.output_tokens == 3 * usage.calls
+
+
+def test_parsing_error_is_raised(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
+    class Model:
+        def with_structured_output(self, schema: type[BaseModel], **kwargs: Any) -> "Model":
+            return self
+
+        def invoke(self, prompt: str) -> Any:
+            return {"raw": None, "parsed": None, "parsing_error": ValueError("bad json")}
+
+    monkeypatch.setattr(llm, "get_settings", lambda: settings)
+    monkeypatch.setattr(llm, "_model", lambda: Model())
+    with pytest.raises(ValueError, match="bad json"):
+        llm.structured("q", Answer)

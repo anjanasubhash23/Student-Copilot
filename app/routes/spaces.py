@@ -10,7 +10,7 @@ from app.deps import CurrentUser, Db, Neo4j, SettingsDep, Space
 from core.graph.queries import get_space_map
 from core.graph.writer import delete_space_graph
 from core.mastery.bkt import PRIOR, is_mastered
-from core.sources import EXTENSIONS, FetchError, UnsupportedFileError, detect_kind, is_youtube
+from core.sources import EXTENSIONS, FetchError, UnsupportedFileError, detect_kind, is_youtube, is_youtube_playlist
 from core.sources.fetch import check_url
 from core.spaces import StudySpace
 from core.spaces.models import ExamStyle, Name
@@ -31,9 +31,12 @@ class NewSpace(BaseModel):
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-def create_space(body: NewSpace, user: CurrentUser, conn: Db) -> StudySpace:
+def create_space(body: NewSpace, user: CurrentUser, conn: Db, settings: SettingsDep) -> StudySpace:
+    repo = SqliteStudySpaceRepository(conn)
+    if len(repo.list_for_owner(user.id)) >= settings.max_spaces_per_user:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"you can have at most {settings.max_spaces_per_user} spaces")
     space = StudySpace.new(body.name, owner_id=user.id).model_copy(update={"exam_style": body.exam_style})
-    SqliteStudySpaceRepository(conn).add(space)
+    repo.add(space)
     return space
 
 
@@ -69,7 +72,7 @@ def _check_room(conn: Db, space: StudySpace, settings: SettingsDep) -> None:
 def _queue(conn: Db, source: Source) -> Source:
     SqliteSourceRepository(conn).add(source)
     SqliteJobQueue(conn).enqueue("ingest_source", source.space_id, source.id)
-    return source
+    return source.model_copy(update={"storage_path": None})  # never expose where uploads are stored
 
 
 @router.post("/{space_id}/sources", status_code=status.HTTP_202_ACCEPTED)
@@ -107,6 +110,10 @@ def add_link(body: NewLink, space: Space, conn: Db, settings: SettingsDep) -> So
     """Add a web page or a YouTube video (its transcript)."""
     _check_room(conn, space, settings)
     url = body.url.strip()
+    if is_youtube_playlist(url):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "playlists aren't supported yet; add the videos one at a time"
+        )
     if is_youtube(url):
         kind: Literal["web", "youtube"] = "youtube"
     else:

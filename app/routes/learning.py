@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.deps import CurrentUser, Db, Map, Neo4j, SettingsDep, Space
+from app.deps import CurrentUser, Db, LlmBudget, Map, Neo4j, SettingsDep, Space
 from core.graph.queries import get_chunks
 from core.marking.marking import InvalidResponseError
 from core.mastery.bkt import MASTERED, PRIOR
@@ -55,7 +55,7 @@ def _question(conn: Db, space_id: str, question_id: str) -> Question:
 # Diagnostic
 
 
-@router.post("/diagnostic")
+@router.post("/diagnostic", dependencies=[LlmBudget])
 def start_diagnostic(
     space: Space, space_map: Map, user: CurrentUser, conn: Db, driver: Neo4j, settings: SettingsDep
 ) -> diagnostic.DiagnosticStep:
@@ -71,7 +71,7 @@ class DiagnosticAnswerOut(BaseModel):
     next: diagnostic.DiagnosticStep
 
 
-@router.post("/diagnostic/{diagnostic_id}/answer")
+@router.post("/diagnostic/{diagnostic_id}/answer", dependencies=[LlmBudget])
 def answer_diagnostic(
     diagnostic_id: str, body: AnswerIn, space: Space, space_map: Map, user: CurrentUser, conn: Db, driver: Neo4j
 ) -> DiagnosticAnswerOut:
@@ -101,7 +101,7 @@ class PracticeNextOut(BaseModel):
     message: str | None = None
 
 
-@router.post("/practice/next")
+@router.post("/practice/next", dependencies=[LlmBudget])
 def practice_next(
     body: PracticeNextIn, space: Space, space_map: Map, user: CurrentUser, conn: Db, driver: Neo4j
 ) -> PracticeNextOut:
@@ -116,7 +116,7 @@ def practice_next(
     return PracticeNextOut(question=q.public(), topic=space_map.topics[q.topic_id].name)
 
 
-@router.post("/practice/answer")
+@router.post("/practice/answer", dependencies=[LlmBudget])
 def practice_answer(
     body: AnswerIn, space: Space, space_map: Map, user: CurrentUser, conn: Db, driver: Neo4j
 ) -> AnswerOut:
@@ -138,7 +138,7 @@ class ExplainIn(BaseModel):
     question: str = Field(min_length=2, max_length=2000)
 
 
-@router.post("/explain")
+@router.post("/explain", dependencies=[LlmBudget])
 def explain_question(
     body: ExplainIn, space: Space, space_map: Map, user: CurrentUser, conn: Db, driver: Neo4j
 ) -> Explanation:

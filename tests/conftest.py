@@ -27,6 +27,9 @@ APP_ENV_VARS = [
     "SQLITE_PATH",
     "DATA_DIR",
     "RUN_WORKER",
+    "APP_ENV",
+    "ALLOW_REGISTRATION",
+    "SESSION_COOKIE_SECURE",
 ]
 
 
@@ -59,7 +62,7 @@ class FakeLLM:
         self.replies: dict[Any, Callable[[str], Any]] = {}
         self.prompts: list[str] = []
 
-    def with_structured_output(self, schema: type[BaseModel]) -> "_Bound":
+    def with_structured_output(self, schema: type[BaseModel], **kwargs: Any) -> "_Bound":
         return _Bound(self, schema)
 
     def invoke(self, prompt: str) -> Any:

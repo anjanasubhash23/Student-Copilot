@@ -24,6 +24,11 @@ def is_youtube(url: str) -> bool:
     return video_id(url) is not None
 
 
+def is_youtube_playlist(url: str) -> bool:
+    """A playlist page (no single video): its HTML has no transcript, so it can't be read as a web page either."""
+    return bool(re.match(r"^https?://(?:www\.|m\.)?youtube\.com/playlist\?", url.strip())) and video_id(url) is None
+
+
 def group_snippets(snippets: list[tuple[float, str]], window: float = WINDOW_SECONDS) -> list[Page]:
     """(start seconds, text) pieces → one Page per `window` seconds, stamped with where it starts."""
     pages: list[Page] = []

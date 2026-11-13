@@ -9,11 +9,13 @@ from neo4j import Driver
 from pydantic import BaseModel
 
 from core.graph.space_map import SpaceMap
+from core.mastery.bkt import ability, estimate_unassessed
 from core.mastery.select import pick_diagnostic_topic
 from core.questions.bank import next_question
 from core.questions.schema import Question, Response
 from core.storage.learning import (
     Diagnostic,
+    SqliteAttemptRepository,
     SqliteDiagnosticRepository,
     SqliteMasteryRepository,
     SqliteQuestionRepository,
@@ -53,6 +55,8 @@ def _advance(conn: sqlite3.Connection, driver: Driver, space: SpaceMap, d: Diagn
     d.current_question_id = question.id if question else None
     d.status = "active" if question else "done"
     repo.save(d)
+    if question is None and d.answered:
+        _estimate_the_rest(conn, space, d)
     return DiagnosticStep(
         diagnostic_id=d.id,
         number=d.answered + 1 if question else d.answered,
@@ -60,6 +64,17 @@ def _advance(conn: sqlite3.Connection, driver: Driver, space: SpaceMap, d: Diagn
         done=question is None,
         question=question.public() if question else None,
     )
+
+
+def _estimate_the_rest(conn: sqlite3.Connection, space: SpaceMap, d: Diagnostic) -> None:
+    """Give every topic the diagnostic didn't reach a starting estimate from the learner's overall ability
+    (bkt.estimate_unassessed), so the map is coloured everywhere and practice starts from a sensible guess."""
+    mastery_repo = SqliteMasteryRepository(conn)
+    mastery = mastery_repo.for_space(d.user_id, d.space_id)
+    answers = SqliteAttemptRepository(conn).recent_answers(d.user_id, d.space_id, "diagnostic", d.answered)
+    estimates = estimate_unassessed(space, mastery, ability(answers))
+    if estimates:
+        mastery_repo.set_many(d.user_id, d.space_id, estimates, cause="diagnostic-estimate")
 
 
 def answer(

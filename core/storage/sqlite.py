@@ -186,6 +186,15 @@ MIGRATIONS: list[list[str]] = [
         """,
         "CREATE INDEX reviews_due ON reviews(user_id, space_id, due_at)",
     ],
+    # 5: LLM usage per job (eval: ingestion time and cost)
+    [
+        "ALTER TABLE jobs ADD COLUMN llm_calls INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE jobs ADD COLUMN llm_cached INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE jobs ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE jobs ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE jobs ADD COLUMN llm_seconds REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE jobs ADD COLUMN llm_model TEXT",
+    ],
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

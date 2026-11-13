@@ -1,5 +1,7 @@
 # study-copilot
 
+[![CI](https://github.com/anjanasubhash23/Student-Database-Management-System/actions/workflows/ci.yml/badge.svg)](https://github.com/anjanasubhash23/Student-Database-Management-System/actions/workflows/ci.yml)
+
 Upload your notes, slides, links or videos and get a tutor that knows what you've mastered. Study Copilot turns a study space's material into a Neo4j graph of topics, units and prerequisites, tracks how likely you are to know each topic (Bayesian Knowledge Tracing), and uses both to pick practice questions, explain things starting from the prerequisites you're weak on, and schedule flashcard reviews (FSRS).
 
 Everything runs locally with no paid services: Neo4j Community in Docker, SQLite on disk, Ollama as the default LLM, and a Next.js web app. An external LLM API (Anthropic, OpenAI or any OpenAI-compatible server) can be used instead.
@@ -32,7 +34,7 @@ Web links are fetched with SSRF protection: http(s) on ports 80/443 only, every 
 
 ### The learning loop
 
-- **Diagnostic** (10 questions): picks the unasked topic whose answer tells most (uncertain, well connected). A right answer also raises the topic's prerequisites, and a wrong one lowers the topics built on it, halving per hop, so a short quiz colours the whole map.
+- **Diagnostic** (10 questions): picks the unasked topic whose answer tells most (uncertain, well connected). A right answer also raises the topic's prerequisites, and a wrong one lowers the topics built on it, halving per hop. When it ends, every topic it didn't reach gets a starting estimate from the learner's overall ability (corrected for guessing) and how likely they are to know its prerequisites, so the map is coloured everywhere.
 - **Practice**: the weakest unmastered topic whose prerequisites are probably known (or any topic you pick on the map).
 - **Questions** are generated the first time a topic is practised, then reused. Each one cites the chunk it came from and passes structural checks plus a second LLM check. Numerical questions are kept only if their generated Python solution, run in a sandbox, reproduces the answer. Rejected questions are stored with the reasons.
 - **Marking**: MCQ by key, multiple-select with partial credit, numerical by range, short answers by rubric (LLM).
@@ -67,15 +69,19 @@ core/
 ├── graph/               # client, ids, writer, queries (space-scoped), space_map (in-memory topic graph)
 ├── questions/           # schema, bank (lazy generation), validate, numeric_runner (sandbox), flashcards, excerpts
 ├── marking/marking.py   # key, range, rubric
-├── mastery/             # bkt.py, select.py (diagnostic/practice topic choice), fsrs.py, progress.py
+├── mastery/             # bkt.py, select.py (topic choice), fsrs.py, progress.py, simulate.py (simulated learners)
+├── evaluation/          # scoring for hand-labelled CSVs; ingestion time/usage report
 ├── tutor/               # answers.py, diagnostic.py, practice.py, explain.py
 ├── spaces/              # study space model + repository protocol
 └── storage/             # SQLite: migrations, repositories, job queue, file store
 workers/                 # job handlers (tasks.py) and the worker loop (run.py)
 prompts/                 # one file per LLM step
 scripts/ingest.py        # CLI: add a file or link to a space and ingest it now
-eval/                    # corpora.md, run_eval.py (topic recall/precision)
+eval/                    # run_eval.py (the evaluation suite), corpora.md (workflow and results)
 web/                     # Next.js app
+deploy/Caddyfile         # HTTPS front for a public server
+Dockerfile, web/Dockerfile, docker-compose.yml
+.github/workflows/ci.yml # lint, types, tests, simulation eval, web build, Docker builds
 tests/
 ```
 
@@ -194,9 +200,72 @@ uv run mypy
 cd web && npm run typecheck       # TypeScript
 ```
 
+## Evaluation
+
+`eval/run_eval.py` is the evaluation suite (spec section 11). The automatic parts run in CI; the rest score your hand labels. The workflow for labelling a corpus is in [eval/corpora.md](eval/corpora.md).
+
+```bash
+uv run python eval/run_eval.py simulate                   # diagnostic accuracy and mastery AUC, simulated learners
+uv run python eval/run_eval.py simulate --graph data/cache/<space-id>.graph.json   # ...on a real map's structure
+uv run python eval/run_eval.py ingest                     # time and LLM usage per ingested source
+uv run python eval/run_eval.py export --space <id> --corpus dbms   # CSVs to label: edges, merges, questions
+uv run python eval/run_eval.py edges eval/data/dbms.edges.csv      # ...then score them (also merges, questions)
+uv run python eval/run_eval.py topics data/cache/<id>.graph.json eval/data/dbms.topics.txt
+```
+
+### Results so far
+
+Simulated learners (200 per run, seed 7; `simulate`). Each learner has a hidden knowledge state that respects the prerequisite graph and answers with the slip and guess rates BKT assumes, so these numbers measure the procedures under the model's own assumptions and are an upper bound for real students.
+
+| Measure | Target | Random course-like maps (~60 topics) | Structure of a real map (Algorithms notes, 130 topics) |
+|---|---|---|---|
+| Diagnostic accuracy after 10 questions | ≥ 0.70 | **0.80** ✓ | **0.73** ✓ |
+| ...guessing "unknown" for every topic | | 0.74 | 0.66 |
+| ...without propagation | | 0.77 | 0.70 |
+| ...without the post-diagnostic estimates | | 0.78 | 0.67 |
+| Mastery-model AUC predicting the next answer | ≥ 0.75 | **0.65** ✗ | **0.57** ✗ |
+| ...from the learner's true hidden state (ceiling) | | 0.90 | |
+
+The diagnostic meets its target, and each part of it (propagation, the estimates for unreached topics) adds accuracy over the trivial baseline. The AUC misses: practice deliberately targets the weakest topics, where predictions cluster around the same low value, and whether a learner happens to know a particular topic is partly luck that no model can see. Improving it likely needs per-learner parameters (e.g. a learn rate fitted per learner), which the spec leaves out of scope. CI fails if diagnostic accuracy drops below 0.70 or the AUC below 0.60.
+
+Ingestion (target: 100 pages in under 5 minutes, under $0.20):
+
+| Source | Model | Pages | Time to "ready" | Per 100 pages | Cost |
+|---|---|---|---|---|---|
+| Design & Analysis of Algorithms notes (PDF) | `ollama/llama3.1:8b` on an Apple-silicon laptop | 31 | 15.3 min (8.5 reading, 6.8 building the map) | ~49 min ✗ | $0 |
+
+A local 8B model is about ten times too slow for the target; an API model (several calls in parallel, `LLM_CONCURRENCY`) is the way to meet it. `ingest` reports LLM calls and tokens per source, so the cost of a run on an API model can be read off directly.
+
+Corpus quality (topic recall, prerequisite precision, merges, question validity) needs hand labels and hasn't been measured yet; see [eval/corpora.md](eval/corpora.md).
+
 ## Configuration
 
 All settings come from environment variables (or `.env`); see `.env.example`, which documents each one (limits per space, worker mode, OCR language, session lifetime). The app refuses to start if a value is invalid, e.g. a missing or too-short `NEO4J_PASSWORD`, a non-bolt `NEO4J_URI`, or `LLM_PROVIDER=anthropic` without `ANTHROPIC_API_KEY`. Secrets are stored as `SecretStr`, so they're masked in logs and error messages.
+
+## Deploy
+
+The whole app runs in Docker: the API, the job worker, the web app and Neo4j, with Caddy in front for HTTPS.
+
+```bash
+docker compose --profile app up -d --build          # everything, on http://localhost:3000
+```
+
+The API isn't published; the web app proxies to it inside the Docker network. Data lives in Docker volumes (`appdata` for SQLite and uploads, `neo4jdata` for the graph). Containers reach Ollama on the host at `host.docker.internal`.
+
+### A public server
+
+Any Linux VM with Docker and 4 GB+ of RAM works (Hetzner, DigitalOcean, Oracle Cloud's free tier, ...):
+
+1. Point a DNS name (e.g. `copilot.example.com`) at the server.
+2. Clone the repo and create `.env` from `.env.example` with:
+   - `APP_ENV=production` (session cookies become HTTPS-only)
+   - `DOMAIN=copilot.example.com`
+   - a strong `NEO4J_PASSWORD`
+   - an API LLM: `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY=...` (a small VM can't run a local model)
+3. Start it: `docker compose --profile app --profile public up -d --build`. Caddy gets a TLS certificate for the domain automatically.
+4. Sign up, then set `ALLOW_REGISTRATION=false` and run the same command again, unless others should be able to sign up.
+
+Back up the `appdata` and `neo4jdata` volumes. Generated numerical solutions run inside the API container's sandbox (see Security notes); on a server shared with untrusted users, isolate further.
 
 ## Where this differs from the spec
 
@@ -210,10 +279,12 @@ The spec (`../project.md`) names some hosted services; this build keeps everythi
 | Supabase Storage | files under `data/` | local |
 | bge-small embeddings + vector indexes | Neo4j full-text (Lucene) indexes | no torch download; good enough to find a topic by its terms. Embedding-based merge and retrieval are a later improvement |
 | LangGraph tutor | plain functions per step | the API already separates the steps, so there's no conversation state to manage |
-| Langfuse traces, cost per job | not yet | |
+| Langfuse traces, cost per job | LLM calls, cache hits, tokens and model time per job, in SQLite (`eval/run_eval.py ingest`) | no extra service; dollar cost is tokens × your provider's price |
+| Vercel + Railway/Render + Upstash + AuraDB + Supabase | one Docker Compose stack (any VM) with Caddy for HTTPS | one place to run it; SQLite needs a disk, which serverless hosts don't give |
 
 ## Security notes
 
 - Uploaded and fetched text is treated as content: prompts quote it inside delimiters that it can't close, and tell the model to ignore instructions in it.
 - Generated numerical solutions run in a separate Python process with an empty environment and a 5-second timeout. An audit hook blocks network access, starting processes, native code and file access outside the standard library, and CPU and file-size limits apply. This is defence in depth for model-written code, not a hardened sandbox; don't expose the app to untrusted users without stronger isolation (e.g. a container with no network).
 - Deleting a space deletes its graph nodes, rows (by cascade) and files.
+- Sign-in is rate-limited per email and per address, LLM-heavy requests per user, and spaces per account (all in `.env`). Sign-ups can be closed with `ALLOW_REGISTRATION=false`.

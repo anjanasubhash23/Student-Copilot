@@ -1,4 +1,8 @@
-# Local development services. Values like ${NEO4J_PASSWORD} are read from .env.
+# Values like ${NEO4J_PASSWORD} are read from .env.
+#
+#   docker compose up -d --wait                              Neo4j only (develop the API and web app locally)
+#   docker compose --profile app up -d --build               the whole app on http://localhost:3000
+#   docker compose --profile app --profile public up -d      ...plus Caddy serving it over HTTPS at $DOMAIN
 services:
   neo4j:
     image: neo4j:5.26-community  # 5.26 is the Neo4j 5 LTS line
@@ -17,6 +21,73 @@ services:
       timeout: 10s
       retries: 10
       start_period: 30s
+    restart: unless-stopped
+
+  api:
+    profiles: [app]
+    build: .
+    image: study-copilot-api
+    env_file: .env
+    environment: &app-env
+      NEO4J_URI: bolt://neo4j:7687
+      RUN_WORKER: "false"  # the worker service runs jobs, so API restarts never interrupt one
+      # Ollama runs on the host (it needs the GPU); containers reach the host here.
+      OLLAMA_BASE_URL: ${DOCKER_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    extra_hosts: &host-gateway
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - appdata:/app/data
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    profiles: [app]
+    image: study-copilot-api
+    command: ["python", "-m", "workers.run"]
+    env_file: .env
+    environment: *app-env
+    extra_hosts: *host-gateway
+    volumes:
+      - appdata:/app/data  # the same SQLite database and files as the API
+    healthcheck:
+      disable: true
+    depends_on:
+      api:
+        condition: service_healthy  # the API migrates the database on startup
+    restart: unless-stopped
+
+  web:
+    profiles: [app]
+    build:
+      context: web
+      args:
+        API_URL: http://api:8000
+    image: study-copilot-web
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  caddy:
+    profiles: [public]
+    image: caddy:2.10-alpine
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}  # set DOMAIN in .env to the name pointing at this server
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    depends_on:
+      - web
+    restart: unless-stopped
 
 volumes:
   neo4jdata:
+  appdata:
+  caddydata:

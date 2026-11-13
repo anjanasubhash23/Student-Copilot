@@ -65,3 +65,39 @@ def propagate(
 
 def is_mastered(p: float) -> bool:
     return p >= MASTERED
+
+
+# After the diagnostic: replace the flat prior for topics it didn't ask about (spec: P(L0) "overwritten by
+# the diagnostic"). A strong learner and a weak one shouldn't start from the same 0.20 everywhere.
+
+UNMET_PREREQS = 0.25  # relative chance of knowing a topic whose prerequisites you don't know
+
+
+def ability(answers: list[tuple[QuestionType, bool]]) -> float:
+    """The share of topics a learner knows, from their answers, corrected for guessing and slips.
+
+    With c the share answered right and g the mean guess rate: c = a(1 - S) + (1 - a)g, so a = (c - g) / (1 - S - g).
+    """
+    if not answers:
+        return PRIOR
+    c = sum(correct for _, correct in answers) / len(answers)
+    g = sum(GUESS[q] for q, _ in answers) / len(answers)
+    return min(max((c - g) / (1 - SLIP - g), 0.05), 0.95)
+
+
+def estimate_unassessed(space: SpaceMap, mastery: dict[str, float], learner_ability: float) -> dict[str, float]:
+    """Starting p_known for every topic the diagnostic didn't reach: the learner's ability, discounted by how
+    likely they are to know its prerequisites. Topics are taken in teaching order so estimates build on each other."""
+    estimates: dict[str, float] = {}
+
+    def known(topic: str) -> float:
+        return mastery.get(topic, estimates.get(topic, learner_ability))
+
+    for topic in sorted(space.topics.values(), key=lambda t: (t.first_seen, t.id)):
+        if topic.id in mastery:
+            continue
+        ready = 1.0
+        for pre in space.prereqs.get(topic.id, ()):
+            ready *= known(pre)
+        estimates[topic.id] = _clamp(learner_ability * (ready + UNMET_PREREQS * (1 - ready)))
+    return estimates

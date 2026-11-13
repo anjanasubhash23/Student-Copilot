@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from core.llm import Usage
 from core.storage.clock import iso, now
 
 JobKind = Literal["ingest_source", "build_graph", "flashcards"]
@@ -97,6 +98,18 @@ class SqliteJobQueue:
             self._conn.execute(
                 "UPDATE jobs SET status = 'failed', error = ?, finished_at = ? WHERE id = ?",
                 (error[:1000], iso(now()), job_id),
+            )
+
+    def record_usage(self, job_id: int, usage: Usage, model: str) -> None:
+        with self._conn:
+            self._conn.execute(
+                """
+                UPDATE jobs SET llm_calls = llm_calls + ?, llm_cached = llm_cached + ?,
+                    input_tokens = input_tokens + ?, output_tokens = output_tokens + ?,
+                    llm_seconds = llm_seconds + ?, llm_model = ?
+                WHERE id = ?
+                """,
+                (usage.calls, usage.cached, usage.input_tokens, usage.output_tokens, usage.seconds, model, job_id),
             )
 
     def requeue_stale(self, older_than: timedelta) -> int:

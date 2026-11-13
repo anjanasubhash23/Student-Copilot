@@ -88,6 +88,7 @@ def test_upload_queues_ingestion_and_reports_status(app_client: TestClient, sett
     r = app_client.post(f"/spaces/{space_id}/sources", files=files)
     assert r.status_code == 202, r.text
     assert r.json()["kind"] == "text"
+    assert r.json()["storage_path"] is None
     # the same file again is refused
     assert app_client.post(f"/spaces/{space_id}/sources", files=files).status_code == 409
     bad = {"file": ("evil.pdf", b"MZ\x90\x00 not a pdf", "application/pdf")}
@@ -315,3 +316,46 @@ def test_delete_space_removes_everything(
     assert deleted == [space_id]
     assert not (settings.data_dir / "uploads" / space_id).exists()
     assert app_client.get(f"/spaces/{space_id}").status_code == 404
+
+
+def test_sign_in_is_rate_limited(app_client: TestClient, settings: Settings) -> None:
+    _register(app_client)
+    for _ in range(settings.login_attempts_per_15_min - 1):  # register counted as one attempt
+        assert (
+            app_client.post("/auth/login", json={"email": "ada@example.com", "password": "wrong pass"}).status_code
+            == 401
+        )
+    r = app_client.post("/auth/login", json={"email": "ada@example.com", "password": "correct horse"})
+    assert r.status_code == 429
+    assert int(r.headers["retry-after"]) > 0
+
+
+def test_registration_can_be_closed(settings: Settings, fake_llm: FakeLLM, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(main, "create_driver", lambda _settings: FakeDriver())
+    closed = settings.model_copy(update={"allow_registration": False})
+    with TestClient(main.create_app(closed)) as client:
+        r = client.post("/auth/register", json={"email": "x@example.com", "password": "password1"})
+    assert r.status_code == 403
+
+
+def test_space_limit(app_client: TestClient, settings: Settings) -> None:
+    _register(app_client)
+    app_client.app.state.settings = settings.model_copy(update={"max_spaces_per_user": 2})  # type: ignore[attr-defined]
+    _space(app_client, "a")
+    _space(app_client, "b")
+    assert app_client.post("/spaces", json={"name": "c"}).status_code == 409
+
+
+def test_llm_requests_are_rate_limited(
+    app_client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch, fake_llm: FakeLLM
+) -> None:
+    space_id, _ = _ready_space(app_client, settings, monkeypatch, fake_llm)
+    app_client.app.state.settings = settings.model_copy(update={"llm_requests_per_minute": 2})  # type: ignore[attr-defined]
+    codes = [app_client.post(f"/spaces/{space_id}/practice/next", json={}).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]
+
+
+def test_secure_cookies_default_on_in_production(settings: Settings) -> None:
+    assert not settings.secure_cookies
+    assert settings.model_copy(update={"app_env": "production"}).secure_cookies
+    assert not settings.model_copy(update={"app_env": "production", "session_cookie_secure": False}).secure_cookies

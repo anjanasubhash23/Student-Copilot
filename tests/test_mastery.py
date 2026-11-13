@@ -7,6 +7,7 @@ from core.mastery import bkt
 from core.mastery.fsrs import review
 from core.mastery.progress import mastered_by_day
 from core.mastery.select import pick_diagnostic_topic, pick_practice_topic
+from core.questions.schema import QuestionType
 from core.storage.learning import MasteryEvent
 
 # sets → relational model → sql → joins;  relational model → normalization
@@ -116,3 +117,32 @@ def test_fsrs_schedules_further_out_for_easier_ratings() -> None:
     assert at <= again < easy
     _, later = review(state, "good", easy)
     assert later > easy
+
+
+def test_ability_corrects_for_guessing() -> None:
+    assert bkt.ability([]) == bkt.PRIOR
+    # all wrong → the floor; all right → near the ceiling
+    assert bkt.ability([("mcq", False)] * 5) == 0.05
+    assert bkt.ability([("short", True)] * 5) == 0.95
+    # 25% right on MCQs is what guessing alone gives: no evidence of knowing anything
+    guessing: list[tuple[QuestionType, bool]] = [("mcq", True), ("mcq", False), ("mcq", False), ("mcq", False)]
+    assert bkt.ability(guessing) == 0.05
+
+
+def test_unassessed_estimates_follow_prerequisites() -> None:
+    m = _map()
+    est = bkt.estimate_unassessed(m, {"rel": 0.95}, 0.8)
+    assert "rel" not in est  # assessed topics are left alone
+    assert est["sets"] == pytest.approx(0.8)  # no prerequisites
+    assert est["sql"] > est["joins"]  # joins needs sql, which is itself uncertain
+    weak = bkt.estimate_unassessed(m, {"rel": 0.05}, 0.8)
+    assert weak["sql"] < est["sql"]  # a weak prerequisite drags its dependents down
+
+
+def test_simulation_meets_the_diagnostic_target() -> None:
+    from core.mastery.simulate import simulate
+
+    r = simulate(learners=40, seed=1)
+    assert r.diagnostic_accuracy >= 0.70
+    assert r.diagnostic_accuracy > r.baseline_all_unknown
+    assert 0.5 < r.auc < r.oracle_auc <= 1.0

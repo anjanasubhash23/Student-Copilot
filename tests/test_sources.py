@@ -115,3 +115,13 @@ def test_citation_locations() -> None:
     assert location({"kind": "docx", "page_start": 2, "page_end": 2}) == "section 2"
     assert location({"kind": "youtube", "timestamp": 725.0, "page_start": 1, "page_end": 1}) == "12:05"
     assert location({"kind": "youtube", "timestamp": 3725.0}) == "1:02:05"
+
+
+def test_playlist_links_are_recognised() -> None:
+    from core.sources.youtube import is_youtube_playlist
+
+    assert is_youtube_playlist("https://www.youtube.com/playlist?list=PLeo1K3hjS3uu")
+    assert not is_youtube_playlist(
+        "https://www.youtube.com/watch?v=UglQN5S9-lc&list=PLBlnK6fEyqRho"
+    )  # a video in a list
+    assert not is_youtube_playlist("https://example.com/playlist?list=x")

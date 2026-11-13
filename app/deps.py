@@ -71,6 +71,14 @@ def owned_space(space_id: str, user: CurrentUser, conn: Db) -> StudySpace:
 Space = Annotated[StudySpace, Depends(owned_space)]
 
 
+def llm_budget(request: Request, user: CurrentUser, settings: SettingsDep) -> None:
+    """Per-user rate limit on requests that call the LLM, so one account can't run up cost or hog the model."""
+    request.app.state.rate_limiter.check("llm", user.id, settings.llm_requests_per_minute, 60)
+
+
+LlmBudget = Depends(llm_budget)
+
+
 NOT_READY = {
     "empty": "this space has no topic map yet; add a source on the Sources tab",
     "building": "the topic map is still being built; this takes a few minutes, see the Sources tab",

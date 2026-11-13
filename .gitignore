@@ -27,3 +27,6 @@ data/courses/*/*.pdf
 eval/data/*
 !eval/data/.gitkeep
 !eval/data/*.topics.txt  # hand-made labels are committed; corpora PDFs aren't
+!eval/data/*.edges.csv
+!eval/data/*.merges.csv
+!eval/data/*.questions.csv
