@@ -10,6 +10,7 @@ Only the last line of stdout is used, and only if it parses as a number.
 """
 
 import math
+import signal
 import subprocess
 import sys
 import tempfile
@@ -67,6 +68,10 @@ def run_solution(code: str, timeout: float = 5.0) -> RunResult:
             )
         except subprocess.TimeoutExpired:
             return RunResult(None, f"timed out after {timeout:g}s")
+    # Killed by the CPU-time limit (SIGXCPU, or SIGKILL past the hard limit): the same as timing out. On
+    # Linux this can fire before the wall-clock timeout, since both are `timeout` seconds.
+    if proc.returncode in (-signal.SIGXCPU, -signal.SIGKILL):
+        return RunResult(None, f"timed out after {timeout:g}s")
     if proc.returncode != 0:
         last = (proc.stderr.strip().splitlines() or ["error"])[-1]
         return RunResult(None, last[:300])
