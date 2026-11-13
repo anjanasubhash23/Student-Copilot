@@ -1,0 +1,17 @@
+# Serves the web app over HTTPS; Caddy gets and renews the certificate for $DOMAIN automatically.
+# The API isn't exposed: the web app proxies /api to it inside the Docker network.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000 {
+		# Question generation with a local model can take minutes.
+		transport http {
+			read_timeout 5m
+		}
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+	}
+}

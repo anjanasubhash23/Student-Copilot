@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
-from core.questions.schema import Mark, Question, Response
+from core.questions.schema import Mark, Question, QuestionType, Response
 from core.storage.clock import iso, now
 
 AttemptMode = Literal["diagnostic", "practice"]
@@ -135,6 +135,19 @@ class SqliteAttemptRepository:
             )
             for r in rows
         ]
+
+    def recent_answers(
+        self, user_id: str, space_id: str, mode: AttemptMode, limit: int
+    ) -> list[tuple[QuestionType, bool]]:
+        """(question type, correct) for the user's latest `limit` answers in `mode`."""
+        rows = self._conn.execute(
+            """
+            SELECT q.type, a.correct FROM attempts a JOIN questions q ON q.id = a.question_id
+            WHERE a.user_id = ? AND a.space_id = ? AND a.mode = ? ORDER BY a.id DESC LIMIT ?
+            """,
+            (user_id, space_id, mode, limit),
+        ).fetchall()
+        return [(r["type"], bool(r["correct"])) for r in rows]
 
     def answered_question_ids(self, user_id: str, space_id: str, topic_id: str) -> set[str]:
         rows = self._conn.execute(

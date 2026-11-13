@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
 
 from app import health
+from app.ratelimit import RateLimiter
 from app.routes import auth, flashcards, learning, spaces
 from app.settings import Settings, get_settings
 from core.graph.client import create_driver
@@ -28,6 +29,9 @@ WORKER_STOP_TIMEOUT = 10.0
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    if settings.app_env == "production" and not settings.secure_cookies:
+        log.warning("SESSION_COOKIE_SECURE=false in production: session cookies will be sent over plain HTTP")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -59,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Study Copilot", version=version("study-copilot"), lifespan=lifespan)
     app.state.settings = settings
+    app.state.rate_limiter = RateLimiter()
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(spaces.router)

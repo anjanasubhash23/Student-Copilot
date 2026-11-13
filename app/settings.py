@@ -68,9 +68,16 @@ class Settings(BaseSettings):
     max_pages_per_space: int = Field(default=300, ge=1)
     ocr_lang: str = "eng"
 
-    # Sign-in sessions. Set SESSION_COOKIE_SECURE=true when served over HTTPS.
+    # Sign-in sessions. The cookie is marked Secure (HTTPS only) in production unless set explicitly.
     session_days: int = Field(default=30, ge=1)
-    session_cookie_secure: bool = False
+    session_cookie_secure: bool | None = None
+
+    # Accounts and abuse limits.
+    allow_registration: bool = True  # set false once your own account exists on a public server
+    max_spaces_per_user: int = Field(default=20, ge=1)
+    login_attempts_per_15_min: int = Field(default=10, ge=1)  # per email and per address
+    llm_requests_per_minute: int = Field(default=20, ge=1)  # per user: practice, diagnostic, explain
+    trust_proxy: bool = True  # the web app proxies the API; use X-Forwarded-For for the caller's address
 
     # Learning loop.
     diagnostic_questions: int = Field(default=10, ge=1, le=50)
@@ -81,6 +88,10 @@ class Settings(BaseSettings):
     def _resolve_path(cls, path: Path) -> Path:
         # Relative paths are relative to the project root, not to wherever the process was started.
         return path if path.is_absolute() else ROOT / path
+
+    @property
+    def secure_cookies(self) -> bool:
+        return self.session_cookie_secure if self.session_cookie_secure is not None else self.app_env == "production"
 
     @model_validator(mode="after")
     def _check_llm(self) -> "Settings":

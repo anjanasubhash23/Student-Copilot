@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from app.settings import get_settings
 from core.ingest.schema import Chunk, Topic, TopicsOut
-from core.llm import load_prompt, structured
+from core.llm import load_prompt, map_in_context, structured
 
 Progress = Callable[[float], None]
 
@@ -21,7 +21,7 @@ def extract_topics(chunks: list[Chunk], on_progress: Progress | None = None) -> 
     """One LLM call per chunk; duplicates across chunks are resolved later in merge."""
     found: list[Topic] = []
     with ThreadPoolExecutor(get_settings().llm_concurrency) as pool:
-        for done, topics in enumerate(pool.map(_topics_in, chunks), start=1):
+        for done, topics in enumerate(map_in_context(pool, _topics_in, chunks), start=1):
             found.extend(topics)
             if on_progress:
                 on_progress(done / len(chunks))

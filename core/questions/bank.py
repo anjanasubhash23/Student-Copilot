@@ -10,7 +10,7 @@ from neo4j import Driver
 from app.settings import get_settings
 from core.graph.queries import topic_chunks
 from core.graph.space_map import TopicInfo
-from core.llm import load_prompt, model_label, prompt_version, structured
+from core.llm import load_prompt, map_in_context, model_label, prompt_version, structured
 from core.questions.excerpts import format_excerpts
 from core.questions.schema import Question, QuestionsOut
 from core.questions.validate import to_question
@@ -52,7 +52,7 @@ def generate(space_id: str, topic: TopicInfo, chunks: list[dict[str, Any]], avoi
         )
 
     with ThreadPoolExecutor(settings.llm_concurrency) as pool:
-        questions = list(pool.map(check, drafts))
+        questions = list(map_in_context(pool, check, drafts))
     log.info("%s: %d/%d questions valid", topic.name, sum(q.status == "valid" for q in questions), len(questions))
     return questions
 

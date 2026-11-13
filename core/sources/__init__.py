@@ -9,7 +9,7 @@ from core.sources.office import load_docx, load_pptx
 from core.sources.pdf import ScannedPdfError, load_pdf
 from core.sources.text import load_text
 from core.sources.web import load_web
-from core.sources.youtube import TranscriptError, is_youtube, load_youtube
+from core.sources.youtube import TranscriptError, is_youtube, is_youtube_playlist, load_youtube
 
 # Errors whose message is written for the user, so it can be shown as the source's failure reason.
 SourceError = (FetchError, ScannedPdfError, TranscriptError, UnsupportedFileError)
@@ -38,6 +38,7 @@ __all__ = [
     "UnsupportedFileError",
     "detect_kind",
     "is_youtube",
+    "is_youtube_playlist",
     "load_file",
     "load_pdf",
     "load_web",

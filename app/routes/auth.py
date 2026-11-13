@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import AfterValidator, BaseModel, Field
 
 from app.deps import SESSION_COOKIE, CurrentUser, Db, SettingsDep, session_token
+from app.ratelimit import client_ip
 from app.settings import Settings
 from core.spaces import AlreadyExistsError
 from core.storage.users import SqliteUserRepository, User
@@ -41,14 +42,24 @@ def _sign_in(response: Response, repo: SqliteUserRepository, user: User, setting
         max_age=int(lifetime.total_seconds()),
         httponly=True,
         samesite="lax",
-        secure=settings.session_cookie_secure,
+        secure=settings.secure_cookies,
         path="/",
     )
     return SignedIn(user=user, token=token)
 
 
+def _limit_sign_in(request: Request, email: str, settings: Settings) -> None:
+    limiter = request.app.state.rate_limiter
+    window = 15 * 60
+    limiter.check("login-email", email, settings.login_attempts_per_15_min, window)
+    limiter.check("login-ip", client_ip(request, settings.trust_proxy), settings.login_attempts_per_15_min * 3, window)
+
+
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-def register(body: Credentials, response: Response, conn: Db, settings: SettingsDep) -> SignedIn:
+def register(body: Credentials, request: Request, response: Response, conn: Db, settings: SettingsDep) -> SignedIn:
+    if not settings.allow_registration:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "sign-ups are closed on this server")
+    _limit_sign_in(request, body.email, settings)
     repo = SqliteUserRepository(conn)
     try:
         user = repo.create(body.email, body.password)
@@ -58,7 +69,8 @@ def register(body: Credentials, response: Response, conn: Db, settings: Settings
 
 
 @router.post("/login")
-def login(body: Credentials, response: Response, conn: Db, settings: SettingsDep) -> SignedIn:
+def login(body: Credentials, request: Request, response: Response, conn: Db, settings: SettingsDep) -> SignedIn:
+    _limit_sign_in(request, body.email, settings)
     repo = SqliteUserRepository(conn)
     user = repo.authenticate(body.email, body.password)
     if user is None:

@@ -13,6 +13,7 @@ from neo4j import Driver
 
 from app.settings import Settings, get_settings
 from core.graph.client import create_driver
+from core.llm import model_label, track_usage
 from core.storage import sqlite
 from core.storage.jobs import SqliteJobQueue
 from workers.tasks import Context, JobError, run_job
@@ -46,16 +47,29 @@ def run_one(ctx: Context, queue: SqliteJobQueue) -> bool:
     if job is None:
         return False
     log.info("job %d: %s (space %s)", job.id, job.kind, job.space_id)
-    try:
-        run_job(ctx, job)
-    except JobError as exc:
-        log.warning("job %d failed: %s", job.id, exc)
-        queue.fail(job.id, str(exc))
-    except Exception as exc:
-        log.exception("job %d crashed", job.id)
-        queue.fail(job.id, f"{type(exc).__name__}: {exc}")
-    else:
-        queue.finish(job.id)
+    with track_usage() as usage:
+        try:
+            run_job(ctx, job)
+        except JobError as exc:
+            log.warning("job %d failed: %s", job.id, exc)
+            queue.fail(job.id, str(exc))
+        except Exception as exc:
+            log.exception("job %d crashed", job.id)
+            queue.fail(job.id, f"{type(exc).__name__}: {exc}")
+        else:
+            queue.finish(job.id)
+        finally:
+            queue.record_usage(job.id, usage, model_label())
+    if usage.calls or usage.cached:
+        log.info(
+            "job %d: %d LLM calls (%d cached), %d+%d tokens, %.1fs waiting on the model",
+            job.id,
+            usage.calls,
+            usage.cached,
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.seconds,
+        )
     return True
 
 

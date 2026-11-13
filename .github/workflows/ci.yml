@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: API, worker, eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Settings validation needs these; tests never connect to Neo4j or an LLM.
+      NEO4J_PASSWORD: ci-password-not-used
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.7"
+          enable-cache: true
+      - name: Install
+        run: uv sync --frozen
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Types
+        run: uv run mypy
+      - name: Tests
+        run: uv run pytest
+      - name: Eval (simulated learners)
+        # Fails below the diagnostic-accuracy target or the AUC regression floor (see eval/run_eval.py).
+        run: uv run python eval/run_eval.py simulate --check
+
+  web:
+    name: Web app
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+  docker:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: API and worker image
+        run: docker build -t study-copilot-api .
+      - name: Web image
+        run: docker build -t study-copilot-web web
+      - name: Compose file is valid
+        run: NEO4J_PASSWORD=x docker compose --profile app --profile public config -q
