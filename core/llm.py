@@ -7,6 +7,8 @@ responses are keyed by (provider, model, prompt, output schema) under data/cache
 
 import hashlib
 import json
+import os
+import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
@@ -15,6 +17,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar, copy_context
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -125,6 +128,15 @@ def model_label() -> str:
     return f"{settings.llm_provider}/{settings.llm_model}"
 
 
+def _write_cache(path: Path, content: str) -> None:
+    """Write via a temporary file and an atomic rename, so a concurrent reader (another thread sent the same
+    prompt) never sees a half-written file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", dir=path.parent, suffix=".tmp", delete=False) as tmp:
+        tmp.write(content)
+    os.replace(tmp.name, path)
+
+
 def load_prompt(name: str, **values: str) -> str:
     text = _prompt_text(name)
     for key, value in values.items():
@@ -149,8 +161,7 @@ def text(prompt: str) -> str:
         if isinstance(content, str)
         else "".join(part if isinstance(part, str) else str(part.get("text", "")) for part in content)
     )
-    cached.parent.mkdir(parents=True, exist_ok=True)
-    cached.write_text(result)
+    _write_cache(cached, result)
     return result
 
 
@@ -199,6 +210,5 @@ def structured[T: BaseModel](prompt: str, output: type[T]) -> T:
     _record(cached=False, message=message, seconds=time.monotonic() - started)
     result = reply if isinstance(reply, output) else output.model_validate(reply)
 
-    cached.parent.mkdir(parents=True, exist_ok=True)
-    cached.write_text(result.model_dump_json())
+    _write_cache(cached, result.model_dump_json())
     return result
